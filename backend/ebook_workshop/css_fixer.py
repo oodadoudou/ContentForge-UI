@@ -1,4 +1,5 @@
 import os
+import sys
 import shutil
 import zipfile
 import hashlib
@@ -6,21 +7,10 @@ import json
 from bs4 import BeautifulSoup
 from ebooklib import epub
 
-def load_default_path_from_settings():
-    """从共享设置文件中读取默认工作目录。"""
-    try:
-        # 向上导航两级以到达项目根目录
-        project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        settings_path = os.path.join(project_root, 'shared_assets', 'settings.json')
-        with open(settings_path, 'r', encoding='utf-8') as f:
-            settings = json.load(f)
-        # 如果 "default_work_dir" 存在且不为空，则返回它
-        default_dir = settings.get("default_work_dir")
-        return default_dir if default_dir else "."
-    except (FileNotFoundError, json.JSONDecodeError, KeyError) as e:
-        print(f"警告：读取 settings.json 失败 ({e})，将使用用户主目录下的 'Downloads' 作为备用路径。")
-        # 提供一个通用的备用路径
-        return os.path.join(os.path.expanduser("~"), "Downloads")
+# Add project root to sys.path
+project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, project_root)
+from backend.utils import get_default_work_dir
 
 def get_unique_css_files(unzip_dir):
     """获取解压目录中所有唯一的CSS文件。"""
@@ -103,7 +93,7 @@ def fix_epub_css(epub_path, output_dir):
 
 def main():
     """主函数，处理所有EPUB文件。"""
-    default_path = load_default_path_from_settings()
+    default_path = get_default_work_dir()
     input_dir = input(f"请输入包含EPUB文件的文件夹路径（默认为：{default_path}）：") or default_path
     
     if not os.path.isdir(input_dir):

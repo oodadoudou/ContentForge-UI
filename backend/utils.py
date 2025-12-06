@@ -9,24 +9,11 @@ def load_settings():
     Includes error handling and logical fallbacks.
     """
     try:
-        # Determine project root. 
-        # Assumes this utils.py is in backend/utils.py or backend/utils.py 
-        # If this file is in backend/utils.py, project root is ../../
-        # If this file is directly in backend/, project root is ../
-        
-        # We will assume this file is placed at backend/utils.py for organization,
-        # or we check relative to where it ends up.
-        # Let's say we put it in backend/utils.py
-        
+        # Determine paths relative to this file (backend/utils.py)
+        # We expect settings.json to be in backend/shared_assets/settings.json
         current_dir = os.path.dirname(os.path.abspath(__file__))
-        
-        # Check if we are in backend/utils or just backend
-        if os.path.basename(current_dir) == 'backend':
-             project_root = os.path.dirname(current_dir)
-        else:
-             project_root = os.path.dirname(os.path.dirname(current_dir))
+        settings_path = os.path.join(current_dir, 'shared_assets', 'settings.json')
 
-        settings_path = os.path.join(project_root, 'shared_assets', 'settings.json')
         
         if not os.path.exists(settings_path):
             return {}

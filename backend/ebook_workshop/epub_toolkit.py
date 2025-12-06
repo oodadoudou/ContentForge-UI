@@ -8,25 +8,11 @@ import json
 
 from pathlib import Path
 
-def load_default_path_from_settings():
-    """从共享设置文件中读取默认工作目录。"""
-    try:
-        # 获取当前脚本所在目录的父目录的父目录 (即项目根目录)
-        project_root = Path(__file__).resolve().parent.parent
-        settings_path = project_root / 'shared_assets' / 'settings.json'
-        
-        if settings_path.exists():
-            with open(settings_path, 'r', encoding='utf-8') as f:
-                settings = json.load(f)
-            # 如果 "default_work_dir" 存在且不为空，则返回它
-            default_dir = settings.get("default_work_dir")
-            return default_dir if default_dir and os.path.exists(default_dir) else "."
-        else:
-             return os.path.join(os.path.expanduser("~"), "Downloads")
-             
-    except (FileNotFoundError, json.JSONDecodeError, KeyError) as e:
-        print(f"警告：读取 settings.json 失败 ({e})，将使用用户主目录下的 'Downloads' 作为备用路径。")
-        return os.path.join(os.path.expanduser("~"), "Downloads")
+# Add project root to sys.path
+project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, project_root)
+from backend.utils import get_default_work_dir
+
 
 def create_epub(src_dir_path, out_file_path):
     """将源文件夹重新打包成 EPUB 文件。"""
@@ -129,7 +115,7 @@ def main():
     mode = input("请选择操作模式: ").strip()
 
     if mode in ['1', '2']:
-        default_path = load_default_path_from_settings()
+        default_path = get_default_work_dir()
         prompt_message = (
             f"\n请输入包含 EPUB 文件的工作目录路径 (默认为: {default_path}): " if mode == '1'
             else f"\n请输入包含解压文件夹的工作目录路径 (默认为: {default_path}): "

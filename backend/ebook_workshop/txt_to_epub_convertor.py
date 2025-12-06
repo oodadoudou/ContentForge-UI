@@ -7,6 +7,11 @@ from ebooklib import epub
 import json
 import platform
 
+# Add project root to sys.path
+project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, project_root)
+from backend.utils import get_default_work_dir
+
 NAMESPACES = {
     'container': 'urn:oasis:names:tc:opendocument:xmlns:container',
     'opf': 'http://www.idpf.org/2007/opf',
@@ -542,15 +547,27 @@ def create_epub(txt_path, final_toc, css_content, cover_path, l1_regex, l2_regex
     """核心函数：创建 EPUB 文件。"""
     default_book_name = os.path.splitext(os.path.basename(txt_path))[0]
     print(f"\n--- 步骤 3: 确认电子书标题 ---")
-    try:
-        print(f"请输入电子书标题 (默认为: '{default_book_name}'): ", flush=True)
-        new_title_line = sys.stdin.readline()
-        if not new_title_line:
-            new_title = ""
-        else:
-             new_title = new_title_line.strip()
+    print(f"当前默认标题为: '{default_book_name}'")
+    print("操作说明:")
+    print(" - 输入 'y' 或 'Y': 使用默认标题")
+    print(" - 输入 'n' 或 'N': 取消生成")
+    print(" - 输入其他内容: 将其作为新的电子书标题")
 
-        book_name = new_title if new_title else default_book_name
+    try:
+        print(f"请输入您的选择: ", flush=True)
+        user_input_line = sys.stdin.readline()
+        if not user_input_line:
+             user_input = "y"
+        else:
+             user_input = user_input_line.strip()
+        
+        if not user_input or user_input.lower() == 'y':
+            book_name = default_book_name
+        elif user_input.lower() == 'n':
+            print("操作已取消。")
+            return
+        else:
+            book_name = user_input
     except EOFError:
         book_name = default_book_name
         print(f"  [自动化] 输入流已关闭，使用默认标题: {book_name}", flush=True)
@@ -739,17 +756,6 @@ body {{
         print(f"  [错误] 写入 EPUB 文件时失败: {e}")
 
 # --- 新增：函数用于从 settings.json 加载默认路径 ---
-def load_default_path_from_settings():
-    """从共享设置文件中读取默认工作目录。"""
-    try:
-        project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        settings_path = os.path.join(project_root, 'shared_assets', 'settings.json')
-        with open(settings_path, 'r', encoding='utf-8') as f:
-            settings = json.load(f)
-        default_dir = settings.get("default_work_dir")
-        return default_dir if default_dir else "."
-    except Exception:
-        return os.path.join(os.path.expanduser("~"), "Downloads")
 
 import argparse
 
@@ -772,7 +778,7 @@ if __name__ == "__main__":
             work_directory = os.path.dirname(work_directory)
     else:
         # --- 修改：动态加载默认路径并获取用户输入 ---
-        default_path = load_default_path_from_settings()
+        default_path = get_default_work_dir()
         try:
             print(f"请输入TXT文件所在的目录 (默认为: {default_path}): ", flush=True)
             path_input_line = sys.stdin.readline()

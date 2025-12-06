@@ -104,7 +104,7 @@ export const Downloaders: React.FC = () => {
                             </Form.Item>
                             <Form.Item>
                                 <Button type="primary" htmlType="submit" loading={extracting}>
-                                    提取榜前 N 本小说
+                                    提取BL完结榜前N本
                                 </Button>
                             </Form.Item>
                         </Form>

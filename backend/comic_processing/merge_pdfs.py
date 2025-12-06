@@ -4,6 +4,13 @@ import pikepdf
 import natsort
 import logging
 import json  # 新增: 用于解析JSON
+import sys
+
+
+# Add project root to sys.path
+project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, project_root)
+from backend.utils import get_default_work_dir
 
 # --- 配置 ---
 # 设置日志记录
@@ -87,25 +94,6 @@ def main():
     print("本工具将自动查找每个子文件夹(及其所有后代目录)中的PDF文件,")
     print("并将它们合并成一个以该子文件夹命名的PDF文件。")
 
-    # --- 新增：与 pipeline 脚本一致的动态路径读取函数 ---
-    def load_default_path_from_settings():
-        """从共享设定档中读取预设工作目录。"""
-        try:
-            # 假设此脚本位于项目子目录，向上两层找到项目根目录
-            project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-            settings_path = os.path.join(project_root, 'shared_assets', 'settings.json')
-            with open(settings_path, 'r', encoding='utf-8') as f:
-                settings = json.load(f)
-            # 如果 default_work_dir 为空或 None，也视为无效
-            default_dir = settings.get("default_work_dir")
-            return default_dir if default_dir else "."
-        except (FileNotFoundError, json.JSONDecodeError, KeyError) as e:
-            # 仅在交互模式下打印警告，避免污染日志
-            if not args.input:
-                print(f"警告：读取 settings.json 失败 ({e})，将使用内建备用路径。")
-            # 在无法读取设定档时，提供一个通用的备用路径
-            return os.path.join(os.path.expanduser("~"), "Downloads")
-    # --- 新增结束 ---
 
     root_dir = ""
 
@@ -119,7 +107,7 @@ def main():
             sys.exit(1)
     else:
         # 2. 交互式回退
-        default_root_dir_name = load_default_path_from_settings()
+        default_root_dir_name = get_default_work_dir()
 
         # --- 标准化的路径处理逻辑 ---
         while True:

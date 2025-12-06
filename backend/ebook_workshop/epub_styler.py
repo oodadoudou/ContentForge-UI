@@ -5,6 +5,16 @@ import shutil
 import tempfile
 import json
 
+# Add project root to sys.path
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__)))) # backend/ebook_workshop -> backend
+# Wait, PROJECT_ROOT in this file is dirname(dirname(abspath)). line 13.
+# So I can use that var or just be explicit.
+# To match others:
+project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)
+from backend.utils import get_default_work_dir
+
 # --- 配置 ---
 NEW_CSS_FILENAME = "new_style.css"
 SHARED_ASSETS_DIR_NAME = "shared_assets"
@@ -209,17 +219,6 @@ def process_epub_directory(root_dir, css_file=None):
     print(f"总计: {len(epub_files)} 个文件 | 成功: {success_count} 个 | 失败: {fail_count} 个")
 
 # --- 新增：函数用于从 settings.json 加载默认路径 ---
-def load_default_path_from_settings():
-    """从共享设置文件中读取默认工作目录。"""
-    try:
-        project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        settings_path = os.path.join(project_root, 'shared_assets', 'settings.json')
-        with open(settings_path, 'r', encoding='utf-8') as f:
-            settings = json.load(f)
-        default_dir = settings.get("default_work_dir")
-        return default_dir if default_dir else "."
-    except Exception:
-        return os.path.join(os.path.expanduser("~"), "Downloads")
 
 if __name__ == "__main__":
     import argparse
@@ -230,7 +229,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     # --- 修改：动态加载所有配置 ---
-    default_path = load_default_path_from_settings()
+    default_path = get_default_work_dir()
     target_dir = ""
 
     if args.input:

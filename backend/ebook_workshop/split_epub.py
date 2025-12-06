@@ -7,6 +7,11 @@ import json
 import tempfile
 import shutil
 
+# Add project root to sys.path
+project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, project_root)
+from backend.utils import get_default_work_dir
+
 # --- 配置 ---
 OUTPUT_DIR_NAME = 'processed_files'
 
@@ -152,17 +157,6 @@ def process_epub_file(epub_path, num_splits, output_dir):
         current_document_index = end_index
 
 # --- 新增：函数用于从 settings.json 加载默认路径 ---
-def load_default_path_from_settings():
-    """从共享设置文件中读取默认工作目录。"""
-    try:
-        project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        settings_path = os.path.join(project_root, 'shared_assets', 'settings.json')
-        with open(settings_path, 'r', encoding='utf-8') as f:
-            settings = json.load(f)
-        default_dir = settings.get("default_work_dir")
-        return default_dir if default_dir else "."
-    except Exception:
-        return os.path.join(os.path.expanduser("~"), "Downloads")
 
 
 import argparse
@@ -227,7 +221,7 @@ def main():
         
     else:
         # Interactive Mode (No args provided at all)
-        default_dir = load_default_path_from_settings()
+        default_dir = get_default_work_dir()
         
         # --- Get User Input ---
         input_dir = input(f"Please enter the directory containing EPUB files (Default: {default_dir}): ").strip()

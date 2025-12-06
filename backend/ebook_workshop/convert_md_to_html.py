@@ -5,6 +5,11 @@ import markdown2
 import base64
 import json
 
+# Add project root to sys.path
+project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, project_root)
+from backend.utils import get_default_work_dir
+
 def create_html_from_markdown(target_path):
     """
     Converts all Markdown files in a specified directory to self-contained HTML files.
@@ -190,17 +195,6 @@ def create_html_from_markdown(target_path):
 import argparse
 
 # --- 新增：函数用于从 settings.json 加载默认路径 ---
-def load_default_path_from_settings():
-    """从共享设置文件中读取默认工作目录。"""
-    try:
-        project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        settings_path = os.path.join(project_root, 'shared_assets', 'settings.json')
-        with open(settings_path, 'r', encoding='utf-8') as f:
-            settings = json.load(f)
-        default_dir = settings.get("default_work_dir")
-        return default_dir if default_dir else "."
-    except Exception:
-        return os.path.join(os.path.expanduser("~"), "Downloads")
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="Convert Markdown files to HTML.")
@@ -214,7 +208,7 @@ if __name__ == '__main__':
         target_directory = args.input
     else:
         # Interactive mode fallback
-        default_path = load_default_path_from_settings()
+        default_path = get_default_work_dir()
         prompt_message = (
             f"请输入包含 Markdown (.md) 文件的文件夹路径。\n"
             f"(直接按 Enter 键，将使用默认路径 '{default_path}') : "

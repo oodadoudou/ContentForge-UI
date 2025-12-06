@@ -3,6 +3,11 @@ import zipfile
 import sys
 import json
 
+# Add project root to sys.path
+project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, project_root)
+from backend.utils import get_default_work_dir
+
 def extract_css_from_epubs(base_dir):
     """
     遍历指定的基础目录，查找所有子目录中的 .epub 文件，
@@ -50,17 +55,6 @@ def extract_css_from_epubs(base_dir):
 
     print("\n[*] 所有操作完成。")
 
-def load_default_path_from_settings():
-    """从共享设置文件中读取默认工作目录。"""
-    try:
-        project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        settings_path = os.path.join(project_root, 'shared_assets', 'settings.json')
-        with open(settings_path, 'r', encoding='utf-8') as f:
-            settings = json.load(f)
-        default_dir = settings.get("default_work_dir")
-        return default_dir if default_dir else "."
-    except Exception:
-        return os.path.join(os.path.expanduser("~"), "Downloads")
 
 import argparse
 
@@ -75,7 +69,7 @@ if __name__ == "__main__":
     if args.input:
         target_directory = args.input
     else:
-        default_path = load_default_path_from_settings()
+        default_path = get_default_work_dir()
         prompt_message = f"请输入目标目录路径 (直接按回车将使用默认路径: {default_path}): "
         try:
             user_input = input(prompt_message)

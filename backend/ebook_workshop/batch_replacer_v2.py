@@ -14,6 +14,11 @@ import sys
 import json
 import css_fixer
 
+# Add project root to sys.path
+project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, project_root)
+from backend.utils import get_default_work_dir
+
 # --- 屏蔽已知警告 ---
 warnings.filterwarnings("ignore", category=UserWarning, module='ebooklib')
 warnings.filterwarnings("ignore", category=FutureWarning, module='ebooklib')
@@ -453,21 +458,6 @@ def process_epub_file(file_path: Path, rules: pd.DataFrame, processed_dir: Path,
             temp_epub_path.unlink()
         return {'modified': False, 'replacement_count': 0, 'css_fixed': False, 'error': str(e)}
 
-def load_default_path_from_settings():
-    """从共享设置文件中读取默认工作目录。"""
-    try:
-        # 向上导航两级以到达项目根目录
-        project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        settings_path = os.path.join(project_root, 'shared_assets', 'settings.json')
-        with open(settings_path, 'r', encoding='utf-8') as f:
-            settings = json.load(f)
-        # 如果 "default_work_dir" 存在且不为空，则返回它
-        default_dir = settings.get("default_work_dir")
-        return default_dir if default_dir else "."
-    except (FileNotFoundError, json.JSONDecodeError, KeyError) as e:
-        print(f"警告：读取 settings.json 失败 ({e})，将使用用户主目录下的 'Downloads' 作为备用路径。")
-        # 提供一个通用的备用路径
-        return os.path.join(os.path.expanduser("~"), "Downloads")
 
 def main():
     """主函数"""
@@ -477,12 +467,11 @@ def main():
     args = parser.parse_args()
 
     # --- 1. 获取目标目录 ---
-    directory_path = None
     if args.input:
         directory_path = args.input
     else:
         # 动态加载默认路径
-        default_path = load_default_path_from_settings()
+        default_path = get_default_work_dir()
         
         try:
             prompt_message = (

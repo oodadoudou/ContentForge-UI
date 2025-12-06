@@ -2,6 +2,11 @@ import os
 import sys
 import json
 
+# Add project root to sys.path
+project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, project_root)
+from backend.utils import get_default_work_dir
+
 def fix_text_file_encoding(file_path, output_path):
     """
     尝试用多种编码读取一个文本文件，并用 UTF-8 格式重新写入。
@@ -47,17 +52,6 @@ def fix_text_file_encoding(file_path, output_path):
         print(f"  - [错误] 写入新文件时失败: {e}")
 
 # --- 新增：函数用于从 settings.json 加载默认路径 ---
-def load_default_path_from_settings():
-    """从共享设置文件中读取默认工作目录。"""
-    try:
-        project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        settings_path = os.path.join(project_root, 'shared_assets', 'settings.json')
-        with open(settings_path, 'r', encoding='utf-8') as f:
-            settings = json.load(f)
-        default_dir = settings.get("default_work_dir")
-        return default_dir if default_dir else "."
-    except Exception:
-        return os.path.join(os.path.expanduser("~"), "Downloads")
 
 def main():
     """
@@ -73,7 +67,7 @@ def main():
         target_directory = args.input
     else:
         # --- 修改：动态加载默认路径 ---
-        default_path = load_default_path_from_settings()
+        default_path = get_default_work_dir()
         prompt_message = f"请输入需要处理的 TXT 文件所在目录 (直接按回车将使用: {default_path}): "
         target_directory = input(prompt_message).strip() or default_path
 

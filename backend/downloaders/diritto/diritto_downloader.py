@@ -5,8 +5,13 @@ import json
 import shutil
 import traceback
 
-# Add the diritto directory to sys.path to find browser_launcher
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__))))
+# Add the project root to sys.path to find backend module
+# Assuming this script is at backend/downloaders/diritto/diritto_downloader.py
+project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+sys.path.insert(0, project_root)
+
+# Add the direito directory to sys.path to find browser_launcher
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from selenium import webdriver
 from selenium.common.exceptions import TimeoutException
@@ -14,43 +19,10 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-from browser_launcher import setup_driver_with_auto_launch
+from backend.downloaders.diritto.browser_launcher import setup_driver_with_auto_launch
+from backend.utils import get_default_work_dir
 
 # --- 脚本核心代码 ---
-
-def load_default_download_path():
-    """
-    从共享设置文件中读取默认工作目录，如果失败则返回用户下载文件夹。
-    """
-    try:
-        # 兼容打包后的程序 (例如 PyInstaller)
-        if getattr(sys, 'frozen', False):
-            project_root = os.path.dirname(sys.executable)
-        # 正常脚本执行时，假定脚本位于 'scripts' 等子目录中
-        else:
-            # 上溯两级目录找到项目根目录
-            project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        
-        settings_path = os.path.join(project_root, 'shared_assets', 'settings.json')
-        
-        if os.path.exists(settings_path):
-            print(f"[信息] 找到配置文件: {settings_path}")
-            with open(settings_path, 'r', encoding='utf-8') as f:
-                settings = json.load(f)
-            default_dir = settings.get("default_work_dir")
-            
-            # 验证路径是否为有效目录
-            if default_dir and os.path.isdir(default_dir):
-                return default_dir
-            elif default_dir:
-                print(f"⚠️ 警告: 配置文件中的路径 '{default_dir}' 无效。将使用后备路径。")
-
-    except Exception as e:
-        print(f"⚠️ 警告: 读取配置文件时出错 ({e})。将使用后备路径。")
-
-    # 如果以上任何步骤失败，则回退到系统默认的下载文件夹
-    return os.path.join(os.path.expanduser("~"), "Downloads")
-
 
 def setup_driver():
     """配置并连接到 Chrome 浏览器（自动启动）"""
@@ -119,12 +91,13 @@ def process_book(driver, start_url, download_path):
         chapter_container_found = False
         for selector in chapter_container_selectors:
             try:
-                wait.until(EC.visibility_of_element_located((By.CSS_SELECTOR, selector)))
+                # 使用短超时(2秒)快速检测，避免长时间等待
+                WebDriverWait(driver, 2).until(EC.visibility_of_element_located((By.CSS_SELECTOR, selector)))
                 print(f"✅ 找到章节容器，使用选择器: {selector}")
                 chapter_container_found = True
                 break
             except TimeoutException:
-                print(f"⚠️ 选择器 {selector} 未找到元素，尝试下一个...")
+                print(f"⚠️ 选择器 {selector} 未找到元素 (超时跳过)...")
                 continue
         
         if not chapter_container_found:
@@ -149,59 +122,70 @@ def process_book(driver, start_url, download_path):
         if scroll_attempts >= max_scroll_attempts:
             print("⚠️ 达到最大滚动尝试次数，停止滚动。")
         
-        # 4. 获取所有章节链接
-        # 尝试多个可能的章节列表容器选择器
-        chapter_list_selectors = [
-            'div[class*="ese98wi3"]',  # 原始选择器
-            'div[class*="eihlkz80"]',  # 备用选择器1
-            'div[class*="episode"]',   # 备用选择器2
-            'div[class*="chapter"]',   # 备用选择器3
-            'div[class*="list"]',      # 备用选择器4
-            'main',                    # 通用容器选择器
-            'body'                     # 最后的兜底选择器
-        ]
+        # 4. 获取所有章节链接 - 这里的逻辑已更新为更鲁棒的"最佳容器"查找策略
+        print("正在分析页面结构以定位章节列表...")
         
-        chapter_list_container = None
-        for selector in chapter_list_selectors:
+        # 策略：查找页面上包含最多有效章节链接的容器(ul或div)
+        candidate_containers = driver.find_elements(By.TAG_NAME, "ul") + \
+                               driver.find_elements(By.CSS_SELECTOR, "div[class*='list']")
+        
+        best_container = None
+        max_valid_links = 0
+        
+        for container in candidate_containers:
             try:
-                chapter_list_container = driver.find_element(By.CSS_SELECTOR, selector)
-                print(f"✅ 找到章节列表容器，使用选择器: {selector}")
-                break
+                # 快速检查容器内是否有链接
+                links = container.find_elements(By.TAG_NAME, "a")
+                valid_count = 0
+                for link in links:
+                    href = link.get_attribute('href')
+                    if href and ('/episodes/' in href or 'episode' in href):
+                        valid_count += 1
+                
+                if valid_count > max_valid_links:
+                    max_valid_links = valid_count
+                    best_container = container
             except Exception:
-                print(f"⚠️ 选择器 {selector} 未找到章节列表容器，尝试下一个...")
                 continue
-        
-        if chapter_list_container is None:
-            print("❌ 错误: 未能找到任何章节列表容器。")
-            return None, None, stats
-        
-        # 尝试多个可能的章节链接选择器
-        chapter_link_selectors = [
-            'a[href*="/episodes/"]',     # 原始选择器
-            'a[href*="episode"]',        # 备用选择器1
-            'a[href*="chapter"]',        # 备用选择器2
-            'a[class*="episode"]',       # 备用选择器3
-            'a[class*="chapter"]'        # 备用选择器4
-        ]
         
         full_url_list = []
-        for selector in chapter_link_selectors:
-            try:
-                chapter_links_elements = chapter_list_container.find_elements(By.CSS_SELECTOR, selector)
-                if chapter_links_elements:
-                    urls = [elem.get_attribute('href') for elem in chapter_links_elements if elem.get_attribute('href')]
-                    full_url_list = sorted(list(set(urls)))
-                    print(f"✅ 找到章节链接，使用选择器: {selector}")
-                    break
-            except Exception:
-                print(f"⚠️ 选择器 {selector} 未找到章节链接，尝试下一个...")
-                continue
+        
+        # 如果找到了包含多个链接的容器，使用它；否则回退到全文搜索
+        target_scope = best_container if (best_container and max_valid_links > 3) else driver
+        scope_name = "最佳匹配容器" if (best_container and max_valid_links > 3) else "整个页面(回退模式)"
+        print(f"✅ 使用 {scope_name} 进行链接提取 (发现 {max_valid_links if best_container else 0} 个潜在链接)")
+
+        try:
+            # 获取范围内的所有链接
+            all_links = target_scope.find_elements(By.TAG_NAME, "a")
+            
+            for link in all_links:
+                href = link.get_attribute('href')
+                text = link.text.strip()
+                
+                # 核心过滤逻辑
+                if href and ('/episodes/' in href or 'episode' in href):
+                    # 排除"公知"(Notice)类型的链接
+                    if "공지" in text:
+                        # print(f"   (跳过公告: {text})")
+                        continue
+                        
+                    full_url_list.append(href)
+            
+            # 去重并排序
+            full_url_list = sorted(list(set(full_url_list)))
+            
+        except Exception as e:
+            print(f"❌ 提取链接时发生错误: {e}")
 
         if not full_url_list:
             print("❌ 错误: 未能找到任何章节链接。")
             return None, None, stats
             
         print(f"共找到 {len(full_url_list)} 个章节。")
+        if len(full_url_list) > 0:
+             print(f"   🔗 首章: {full_url_list[0]}")
+             print(f"   🔗 末章: {full_url_list[-1]}")
 
         # 5. 确定下载起点
         start_index = 0
@@ -225,6 +209,7 @@ def process_book(driver, start_url, download_path):
         print(f"  - 完整txt目录: {complete_txt_dir}")
         
         # 6. 循环下载每个章节，并加入重试逻辑
+        consecutive_failures = 0
         for i, url in enumerate(full_url_list[start_index:], start=start_index):
             chapter_number = i + 1
             print(f"\n--- 正在处理《{novel_title}》- 第 {chapter_number} / {len(full_url_list)} 章 ---")
@@ -240,6 +225,7 @@ def process_book(driver, start_url, download_path):
                 existing_file_name = existing_files[0]
                 print(f"✅ 检测到文件 '{existing_file_name}'，本章已下载，将跳过。")
                 stats['skipped'] += 1
+                consecutive_failures = 0  # 视为成功以重置计数
                 continue
 
             retries = 0
@@ -269,7 +255,8 @@ def process_book(driver, start_url, download_path):
                     chapter_title = None
                     for selector in chapter_title_selectors:
                         try:
-                            chapter_title_element = wait.until(EC.visibility_of_element_located((By.CSS_SELECTOR, selector)))
+                            # 快速检测(2s)
+                            chapter_title_element = WebDriverWait(driver, 2).until(EC.visibility_of_element_located((By.CSS_SELECTOR, selector)))
                             chapter_title = chapter_title_element.text.strip()
                             if chapter_title:  # 确保标题不为空
                                 break
@@ -280,31 +267,48 @@ def process_book(driver, start_url, download_path):
                         chapter_title = f"第{chapter_number}章"
                         print(f"  ⚠️ 无法获取章节标题，使用默认: {chapter_title}")
                     
-                    # 尝试多个可能的内容选择器 (优先使用Diritto的ProseMirror结构)
+                    # 6. 获取章节内容
                     content_selectors = [
-                        'div.tiptap.ProseMirror',    # Diritto内容的确切选择器
-                        '.tiptap.ProseMirror',       # 原始选择器
-                        '.ProseMirror',              # ProseMirror编辑器
-                        '.e1rxxh2l2 .ProseMirror',    # 内容容器内的ProseMirror
-                        '.content',                  # 通用内容选择器
-                        '[class*="content"]',        # 任何包含content的class
-                        '[class*="text"]',           # 任何包含text的class
-                        'article'                    # article标签
+                        'div.ProseMirror',           # 最常见的ProseMirror容器
+                        'div[class*="ProseMirror"]', # 宽泛匹配
+                        '.tiptap.ProseMirror',       
+                        'div[contenteditable="false"]',
+                        '.viewer-content',
+                        'article',
+                        '#viewer-content',
+                        'main'
                     ]
                     
                     content = None
                     for selector in content_selectors:
                         try:
-                            content_container = wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, selector)))
+                            # 快速检测(2s)
+                            content_container = WebDriverWait(driver, 2).until(EC.presence_of_element_located((By.CSS_SELECTOR, selector)))
+                            
+                            # 策略1: 尝试获取所有 p 标签 (通常格式更好)
                             content_elements = content_container.find_elements(By.CSS_SELECTOR, 'p')
                             if content_elements:
                                 content = "\n\n".join([p.text for p in content_elements if p.text.strip()])
-                                if content.strip():  # 确保内容不为空
-                                    break
+                            
+                            # 策略2: 如果没有 p 标签或内容为空，直接获取容器文本 (innerText)
+                            if not content or not content.strip():
+                                content = content_container.get_attribute('innerText')
+                                
+                            if content and content.strip():  # 确保内容不为空
+                                print(f"✅ 找到章节内容，使用选择器: {selector}")
+                                break
                         except (TimeoutException, Exception):
                             continue
                     
                     if not content or not content.strip():
+                        # 尝试保存出错页面的HTML以便调试
+                        try:
+                            debug_file = "Single_chapter_debug.html"
+                            with open(debug_file, "w", encoding="utf-8") as f:
+                                f.write(driver.page_source)
+                            print(f"  ⚠️ 保存出错页面源码至: {debug_file}")
+                        except:
+                            pass
                         raise ValueError("获取到的内容为空，可能页面结构已变化。")
 
                     sanitized_title = chapter_title.replace('/', '_').replace('\\', '_').replace(':', '：')
@@ -340,6 +344,19 @@ def process_book(driver, start_url, download_path):
                         print(f"  ❌ 抓取本章失败，已达到最大重试次数。")
                         stats['failed'] += 1
                         stats['failed_items'].append({'url': url, 'error': error_msg})
+
+            if download_successful:
+                consecutive_failures = 0
+            else:
+                consecutive_failures += 1
+                if consecutive_failures >= 5:
+                    print("\n" + "!"*60)
+                    print("❌ 错误: 连续 5 章提取内容失败，停止下载当前书籍。")
+                    print("⚠️ 提示: 如果迟迟无法下载，请在现在打开的浏览器里登入已经成人认证过的账号，然后再次使用")
+                    print("⚠️ 提示: 如果依然无法下载可能是diritto官方限时免费已经结束")
+                    print("!"*60 + "\n")
+                    stats['notes'] = "diritto官方已经关闭阅读/需要登录"
+                    break
 
             time.sleep(2)
             
@@ -450,29 +467,70 @@ def print_total_report(all_book_stats):
 
 
 if __name__ == "__main__":
-    default_download_path = load_default_download_path()
-    print(f"[信息] 当前下载路径设置为: {default_download_path}")
+    # --- 1. 参数解析 ---
+    # 简单解析命令行参数，支持 output 和 urls
+    output_dir = None
+    url_list = []
     
-    # Check for command line arguments first
-    if len(sys.argv) > 1:
-        # Check for --urls flag
-        if '--urls' in sys.argv:
-            urls_idx = sys.argv.index('--urls') + 1
-            if urls_idx < len(sys.argv):
-                urls_arg = sys.argv[urls_idx]
-                # Try JSON first, fallback to comma-separated
+    args = sys.argv[1:]
+    i = 0
+    while i < len(args):
+        arg = args[i]
+        if arg == '--urls':
+            if i + 1 < len(args):
+                val = args[i+1]
                 try:
-                    url_list = json.loads(urls_arg)
+                    url_list = json.loads(val)
                 except:
-                    url_list = [u.strip() for u in urls_arg.split(',') if u.strip()]
+                    url_list = [u.strip() for u in val.split(',') if u.strip()]
+                i += 2
             else:
                 print("❌ 错误: --urls 参数缺少值")
                 sys.exit(1)
+        elif arg == '--output':
+            if i + 1 < len(args):
+                output_dir = args[i+1]
+                i += 2
+            else:
+                print("❌ 错误: --output 参数缺少值")
+                sys.exit(1)
+        elif arg.startswith("http"):
+            url_list.append(arg)
+            i += 1
         else:
-            # Existing behavior: all args are URLs
-            urls_input = " ".join(sys.argv[1:])
-            url_list = [url for url in urls_input.split() if url.startswith("http")]
+            i += 1
+            
+    # --- 2. 确定下载目录 ---
+    # 优先级: --output 参数 > 当前工作目录 (如果非项目根目录) > 配置文件设置 > 系统下载目录
+    
+    if not output_dir:
+        current_cwd = os.getcwd()
+        
+        # 简单判断当前是否为项目根目录 (含有 run.py 和 backend 文件夹)
+        is_project_root = os.path.exists(os.path.join(current_cwd, 'run.py')) and \
+                          os.path.exists(os.path.join(current_cwd, 'backend'))
+                          
+        if not is_project_root:
+            output_dir = current_cwd
+            print(f"[信息] 使用当前工作目录作为下载路径: {output_dir}")
+        else:
+            # 回退到配置文件或默认下载
+            output_dir = get_default_work_dir()
+            print(f"[信息] 当前位于项目根目录，回退到默认下载路径: {output_dir}")
     else:
+        print(f"[信息] 使用指定输出目录: {output_dir}")
+
+    # 确保目录存在
+    if not os.path.exists(output_dir):
+        try:
+            os.makedirs(output_dir)
+            print(f"已创建下载目录: {output_dir}")
+        except Exception as e:
+            print(f"❌ 无法创建目录 {output_dir}: {e}")
+            sys.exit(1)
+
+    # --- 3. 获取URL (交互模式) ---
+    if not url_list:
         print("\n请输入一个或多个Diritto小说URL (可分多行粘贴, 输入完成后按两次回车结束):")
         lines = []
         while True:
@@ -489,11 +547,8 @@ if __name__ == "__main__":
     if not url_list:
         print("❌ 错误: 未输入有效的URL。")
     else:
-        if not os.path.exists(default_download_path):
-            os.makedirs(default_download_path)
-            print(f"已创建下载目录: {default_download_path}")
-        
         driver = setup_driver()
+
         if driver:
             all_book_stats = []
             try:
@@ -503,7 +558,7 @@ if __name__ == "__main__":
                     print(f"# 开始处理第 {i + 1} / {len(url_list)} 本书: {novel_url}")
                     print("#"*60 + "\n")
 
-                    novel_title, book_dir, book_stats = process_book(driver, novel_url, default_download_path)
+                    novel_title, book_dir, book_stats = process_book(driver, novel_url, output_dir)
                     
                     if book_stats:
                         all_book_stats.append(book_stats)

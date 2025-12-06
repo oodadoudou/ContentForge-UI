@@ -32,6 +32,17 @@ FONT_FAMILY_PATTERN = re.compile(r'font-family\s*:\s*[^;]+;', re.IGNORECASE)
 FONT_PATTERN = re.compile(r'font\s*:\s*[^;]+;', re.IGNORECASE)
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+# Add project root to sys.path
+sys.path.insert(0, os.path.dirname(PROJECT_ROOT)) # backend parent is project root? Wait.
+# PROJECT_ROOT in this file (line 34) is dirname(dirname(abspath)).
+# abspath = backend/ebook_workshop/epub_cleaner.py
+# dirname = backend/ebook_workshop
+# dirname(dirname) = backend
+# Using explicit calculation to be safe matching other scripts:
+real_project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+if real_project_root not in sys.path:
+    sys.path.insert(0, real_project_root)
+from backend.utils import get_default_work_dir
 
 def get_unique_filepath(path):
     """检查文件路径是否存在，如果存在则添加数字使其唯一"""
@@ -47,19 +58,6 @@ def get_unique_filepath(path):
             return new_path
         counter += 1
 
-def load_default_path_from_settings():
-    """从共享设置文件中读取默认工作目录"""
-    try:
-        settings_path = os.path.join(PROJECT_ROOT, 'shared_assets', 'settings.json')
-        if os.path.exists(settings_path):
-            with open(settings_path, 'r', encoding='utf-8') as f:
-                settings = json.load(f)
-            default_dir = settings.get("default_work_dir")
-            return default_dir if default_dir and os.path.isdir(default_dir) else DEFAULT_INPUT_PATH
-        else:
-            return DEFAULT_INPUT_PATH
-    except Exception:
-        return DEFAULT_INPUT_PATH
 
 def clean_css_fonts(css_content):
     """
@@ -482,8 +480,9 @@ if __name__ == "__main__":
              print(f"\n❌ 错误: 目录 '{target_dir}' 不存在或不是有效目录。")
              sys.exit(1)
     else:
-        default_path = load_default_path_from_settings()
+        default_path = get_default_work_dir()
         prompt_message = (
+
             f"\n请输入包含 EPUB 文件的目录路径\n"
             f"(直接按 Enter 使用默认路径: {default_path}): "
         )
