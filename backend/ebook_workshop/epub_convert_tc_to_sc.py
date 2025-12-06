@@ -158,19 +158,29 @@ def main():
     """
     脚本主入口。
     """
+    import argparse
+    parser = argparse.ArgumentParser(description="EPUB TC to SC Converter")
+    parser.add_argument("--input", help="Input directory")
+    args = parser.parse_args()
+
     cc = initialize_opencc()
     print("[信息] OpenCC 初始化成功。")
 
-    # --- 修改：动态加载默认路径 ---
-    default_path = load_default_path_from_settings()
-    prompt_message = f"请输入包含 EPUB 的根目录 (直接按回车将使用: {default_path}): "
-    target_directory = input(prompt_message).strip() or default_path
+    target_directory = None
+    if args.input:
+        target_directory = args.input
+    else:
+        # --- 修改：动态加载默认路径 ---
+        default_path = load_default_path_from_settings()
+        prompt_message = f"请输入包含 EPUB 的根目录 (直接按回车将使用: {default_path}): "
+        user_input = input(prompt_message).strip()
+        target_directory = user_input if user_input else default_path
 
     if not os.path.isdir(target_directory):
         print(f"错误: 目录 '{target_directory}' 不存在或无效。", file=sys.stderr)
         sys.exit(1)
         
-    output_dir = os.path.join(target_directory, "translated_files")
+    output_dir = os.path.join(target_directory, "processed_files")
     os.makedirs(output_dir, exist_ok=True)
     
     print(f"[*] 开始扫描目录: {os.path.abspath(target_directory)}")

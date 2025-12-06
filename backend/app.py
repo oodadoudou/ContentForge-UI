@@ -1,4 +1,5 @@
 import os
+import sys
 import logging
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
@@ -45,7 +46,29 @@ from backend.routers import tasks, settings
 app.include_router(tasks.router, prefix="/api/tasks", tags=["tasks"])
 app.include_router(settings.router, prefix="/api/settings", tags=["settings"])
 
+# Serve Frontend (for Desktop App)
+from fastapi.responses import FileResponse
+
+# Determine path to frontend/dist
+# If frozen (PyInstaller), use sys._MEIPASS
+if getattr(sys, 'frozen', False):
+    frontend_dist = os.path.join(sys._MEIPASS, 'frontend', 'dist')
+else:
+    frontend_dist = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "frontend", "dist")
+
+if os.path.exists(frontend_dist):
+    app.mount("/assets", StaticFiles(directory=os.path.join(frontend_dist, "assets")), name="assets")
+
+    @app.get("/{full_path:path}")
+    async def serve_spa(full_path: str):
+        # Check if file exists in dist (e.g. favicon.ico, manifest.json)
+        file_path = os.path.join(frontend_dist, full_path)
+        if os.path.exists(file_path) and os.path.isfile(file_path):
+            return FileResponse(file_path)
+        
+        # Otherwise return index.html for SPA routing
+        return FileResponse(os.path.join(frontend_dist, "index.html"))
+
 if __name__ == "__main__":
     import uvicorn
-    # In production, this might be run by the main process
     uvicorn.run(app, host="127.0.0.1", port=8000)

@@ -271,13 +271,23 @@ def load_default_path_from_settings():
 
 def main():
     """脚本主入口。"""
+    import argparse
+    parser = argparse.ArgumentParser(description="EPUB Reformat and Convert Tool V2")
+    parser.add_argument("--input", "-i", type=str, help="Directory containing EPUB files")
+    args = parser.parse_args()
+
     cc = initialize_opencc()
     print("[信息] OpenCC 初始化成功。")
 
-    # --- 修改：动态加载默认路径 ---
-    default_path = load_default_path_from_settings()
-    prompt_message = f"请输入目标根目录 (直接按回车将使用: {default_path}): "
-    target_directory = input(prompt_message).strip() or default_path
+    target_directory = None
+    if args.input:
+        target_directory = args.input
+    else:
+        # --- 修改：动态加载默认路径 ---
+        default_path = load_default_path_from_settings()
+        prompt_message = f"请输入目标根目录 (直接按回车将使用: {default_path}): "
+        user_input = input(prompt_message).strip()
+        target_directory = user_input if user_input else default_path
 
     if not os.path.isdir(target_directory):
         print(f"错误: 目录 '{target_directory}' 不存在或无效。", file=sys.stderr)

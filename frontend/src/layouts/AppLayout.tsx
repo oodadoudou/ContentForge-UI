@@ -1,18 +1,19 @@
-import React, { useState } from 'react';
-import { Layout, Menu, theme, Input, Space, Button, Tooltip, Typography } from 'antd';
+import React, { useState, useEffect } from 'react';
+import { Layout, Menu, theme, Input, Space, Button, Tooltip, Typography, message } from 'antd';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { Console } from '../components/Console';
 import {
-    DashboardOutlined,
     FileImageOutlined,
     ReadOutlined,
     FolderOpenOutlined,
     CloudDownloadOutlined,
-    SettingOutlined,
     QuestionCircleOutlined,
-    FolderOutlined
+    FolderOutlined,
+    SettingOutlined,
+    SaveOutlined
 } from '@ant-design/icons';
 import { useStore } from '../store/useStore';
+import { apiClient } from '../api/client';
 
 const { Header, Content, Footer, Sider } = Layout;
 const { Text } = Typography;
@@ -27,24 +28,57 @@ export const AppLayout: React.FC = () => {
 
     // Global Store
     const settings = useStore(state => state.settings);
+    const setStoreSettings = useStore(state => state.setSettings);
+
+    // Load global settings on mount
+    useEffect(() => {
+        const loadSettings = async () => {
+            try {
+                const res = await apiClient.get('/api/settings');
+                // Only update if we got valid data
+                if (res.data) {
+                    setStoreSettings(res.data);
+                }
+            } catch (error) {
+                console.error("Failed to load global settings on startup", error);
+            }
+        };
+        loadSettings();
+    }, []);
+
+    const handleSaveDefault = async () => {
+        if (!settings.workDir) {
+            message.warning("当前没有设置会话目录 (Session WorkDir is empty).");
+            return;
+        }
+        try {
+            // Save current session workDir as default_work_dir
+            const newSettings = { ...settings, default_work_dir: settings.workDir };
+            const res = await apiClient.post('/api/settings', newSettings);
+            setStoreSettings(res.data);
+            message.success("已保存为默认工作目录 (Saved as Default).");
+        } catch (error) {
+            console.error("Failed to save settings", error);
+            message.error("保存失败 (Failed to save).");
+        }
+    };
 
     const items = [
-        { key: '/', icon: <DashboardOutlined />, label: 'Dashboard' },
-        { key: '/comic', icon: <FileImageOutlined />, label: 'Comic Processing' },
-        { key: '/ebook', icon: <ReadOutlined />, label: 'Ebook Workshop' },
-        { key: '/org', icon: <FolderOpenOutlined />, label: 'File Organization' },
-        { key: '/downloaders', icon: <CloudDownloadOutlined />, label: 'Downloaders' },
-        { key: '/settings', icon: <SettingOutlined />, label: 'Settings' },
+        { key: '/', icon: <SettingOutlined />, label: '设置 (Settings)' },
+        { key: '/ebook', icon: <ReadOutlined />, label: '电子书工坊 (Ebook Workshop)' },
+        { key: '/comic', icon: <FileImageOutlined />, label: '漫画处理 (Comic Processing)' },
+        { key: '/org', icon: <FolderOpenOutlined />, label: '文件整理 (File Organization)' },
+        { key: '/downloaders', icon: <CloudDownloadOutlined />, label: '下载器 (Downloaders)' },
     ];
 
     return (
         <Layout style={{ minHeight: '100vh' }}>
-            <Sider collapsible collapsed={collapsed} onCollapse={(value) => setCollapsed(value)}>
-                <div style={{ height: 32, margin: 16, background: 'rgba(255, 255, 255, 0.2)', textAlign: 'center', color: '#fff', lineHeight: '32px', fontWeight: 'bold', cursor: 'pointer' }} onClick={() => navigate('/')}>
+            <Sider collapsible collapsed={collapsed} onCollapse={(value) => setCollapsed(value)} theme="light">
+                <div style={{ height: 32, margin: 16, background: 'rgba(0, 0, 0, 0.05)', textAlign: 'center', color: '#000', lineHeight: '32px', fontWeight: 'bold', cursor: 'pointer', borderRadius: 6 }} onClick={() => navigate('/')}>
                     {collapsed ? 'CF' : 'ContentForge'}
                 </div>
                 <Menu
-                    theme="dark"
+                    theme="light"
                     defaultSelectedKeys={['/']}
                     selectedKeys={[location.pathname]}
                     mode="inline"
@@ -54,20 +88,28 @@ export const AppLayout: React.FC = () => {
             </Sider>
             <Layout>
                 <Header style={{ padding: '0 24px', background: colorBgContainer, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                    <h2 style={{ margin: 0 }}>ContentForge Desktop</h2>
+                    <h2 style={{ margin: 0 }}>ContentForge 桌面版</h2>
                     <Space size="middle">
                         <Space style={{ marginRight: 24 }}>
                             <FolderOutlined />
-                            <Text type="secondary" style={{ fontSize: 13 }}>Workdir:</Text>
+                            <Text type="secondary" style={{ fontSize: 13 }}>工作目录:</Text>
                             <Input
                                 size="small"
-                                style={{ width: 300 }}
-                                value={settings.default_work_dir || "Not set (Use Settings)"}
-                                readOnly
-                                prefix={<Text type="secondary">/</Text>}
+                                style={{ width: 350 }}
+                                value={settings.workDir || settings.default_work_dir || ''}
+                                onChange={(e) => useStore.getState().updateSettings({ workDir: e.target.value })}
+                                placeholder="工作目录 (Working Directory)"
+                                prefix={<FolderOpenOutlined style={{ color: 'rgba(0,0,0,.25)' }} />}
                             />
+                            <Tooltip title="将当前目录保存为默认启动目录">
+                                <Button
+                                    size="small"
+                                    icon={<SaveOutlined />}
+                                    onClick={handleSaveDefault}
+                                />
+                            </Tooltip>
                         </Space>
-                        <Tooltip title="Help & Documentation">
+                        <Tooltip title="帮助与文档">
                             <Button shape="circle" icon={<QuestionCircleOutlined />} />
                         </Tooltip>
                     </Space>

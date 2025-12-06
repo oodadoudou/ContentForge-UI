@@ -187,6 +187,8 @@ def create_html_from_markdown(target_path):
     print("\nAll files processed successfully!")
 
 
+import argparse
+
 # --- 新增：函数用于从 settings.json 加载默认路径 ---
 def load_default_path_from_settings():
     """从共享设置文件中读取默认工作目录。"""
@@ -200,21 +202,39 @@ def load_default_path_from_settings():
     except Exception:
         return os.path.join(os.path.expanduser("~"), "Downloads")
 
-# --- 修改：主程序块使用交互式输入 ---
 if __name__ == '__main__':
-    default_path = load_default_path_from_settings()
+    parser = argparse.ArgumentParser(description="Convert Markdown files to HTML.")
+    parser.add_argument("--input", "-i", type=str, help="Directory containing Markdown files")
     
-    prompt_message = (
-        f"请输入包含 Markdown (.md) 文件的文件夹路径。\n"
-        f"(直接按 Enter 键，将使用默认路径 '{default_path}') : "
-    )
-    user_input = input(prompt_message)
+    args = parser.parse_args()
+    
+    target_directory = None
 
-    target_directory = user_input.strip() if user_input.strip() else default_path
-    
+    if args.input:
+        target_directory = args.input
+    else:
+        # Interactive mode fallback
+        default_path = load_default_path_from_settings()
+        prompt_message = (
+            f"请输入包含 Markdown (.md) 文件的文件夹路径。\n"
+            f"(直接按 Enter 键，将使用默认路径 '{default_path}') : "
+        )
+        try:
+            user_input = input(prompt_message)
+            target_directory = user_input.strip() if user_input.strip() else default_path
+        except EOFError:
+             # Handle case where input is closed (e.g. detached process)
+             pass
+
     if not target_directory:
-        print("错误：未提供有效路径。")
+        print("错误：必须提供 --input 参数或在交互模式下输入路径。")
+        sys.exit(1)
+        
+    target_directory = os.path.abspath(target_directory)
+
+    if not os.path.isdir(target_directory):
+        print(f"错误：路径 '{target_directory}' 不存在或不是有效的目录。")
         sys.exit(1)
 
-    print(f"[*] 已选择工作目录: {os.path.abspath(target_directory)}")
+    print(f"[*] 已选择工作目录: {target_directory}")
     create_html_from_markdown(target_directory)

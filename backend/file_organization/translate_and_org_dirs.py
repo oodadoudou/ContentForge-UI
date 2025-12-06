@@ -173,15 +173,17 @@ def extract_folder_names_to_file(root_directory: str) -> list:
         if not subdirectories:
             print("    在该目录下没有找到任何子文件夹。")
             return []
-        print(f"    找到 {len(subdirectories)} 个子文件夹。")
+        
         with open(os.path.join(root_directory, "list.txt"), 'w', encoding='utf-8') as f:
             for dir_name in subdirectories:
                 f.write(dir_name + '\n')
         print(f"    成功将文件夹名称列表写入到: {os.path.join(root_directory, 'list.txt')}")
+        
         return subdirectories
     except Exception as e:
         print(f"    步骤 1 发生错误: {e}")
     return []
+
 
 def translate_names_via_api(root_directory: str, original_names: list) -> list:
     """逐个调用AI API翻译文件夹名称列表，并将结果保存到list-zh.txt。"""
@@ -226,6 +228,7 @@ def translate_names_via_api(root_directory: str, original_names: list) -> list:
     with open(os.path.join(root_directory, "list-zh.txt"), 'w', encoding='utf-8') as f:
         for name in translated_names: f.write(name + '\n')
     print(f"    成功将翻译结果写入到: {os.path.join(root_directory, 'list-zh.txt')}")
+    
     return translated_names
 
 def rename_dirs_to_chinese(root_directory: str, original_names: list, translated_names: list) -> list:
@@ -354,30 +357,56 @@ def cleanup_temp_files(root_directory: str):
 # 主执行流程
 # ==============================================================================
 if __name__ == "__main__":
+    import argparse
+    import sys
+
     print("文件整理、翻译及重命名流水线脚本")
     print("-" * 50)
+    
+    parser = argparse.ArgumentParser(description="Translate and Organize")
+    parser.add_argument("--target_dir", help="Target directory to process")
+    args = parser.parse_args()
 
     # --- 修改：动态加载所有配置 ---
     default_path = load_settings_from_json()
-    
-    try:
-        target_directory_input = input(f"请输入【根目录】路径 (默认: {default_path})，然后按 Enter: ").strip()
-        
-        target_directory = target_directory_input if target_directory_input else default_path
-        if not target_directory_input:
-            print(f"    使用默认路径: {target_directory}")
+    target_directory = ""
 
-        while not os.path.isdir(target_directory):
-            print(f"错误: '{target_directory}' 不是一个有效的目录路径。")
-            target_directory_input = input("请重新输入路径，或直接按 Enter 退出: ").strip()
-            if not target_directory_input:
-                print("未输入有效路径，脚本退出。")
-                sys.exit()
-            target_directory = target_directory_input
+    if args.target_dir:
+        if os.path.isdir(args.target_dir):
+            target_directory = args.target_dir
+            print(f"Using target directory from args: {target_directory}")
+        else:
+            print(f"Error: Provided target_dir '{args.target_dir}' is not valid.")
+            sys.exit(1)
+    else:
+        try:
+            # Fallback for piped input or interactive
+            if not sys.stdin.isatty():
+                 possible_input = sys.stdin.read().strip()
+                 if possible_input and os.path.isdir(possible_input):
+                      target_directory = possible_input
+                      print(f"Received path via pipe: {target_directory}")
+            
+            if not target_directory:
+                target_directory_input = input(f"请输入【根目录】路径 (默认: {default_path})，然后按 Enter: ").strip()
+                
+                target_directory = target_directory_input if target_directory_input else default_path
+                if not target_directory_input:
+                    print(f"    使用默认路径: {target_directory}")
 
-    except KeyboardInterrupt:
-        print("\n操作被用户中断。脚本退出。")
-        sys.exit()
+            while not os.path.isdir(target_directory):
+                print(f"错误: '{target_directory}' 不是一个有效的目录路径。")
+                if not sys.stdin.isatty():
+                     sys.exit(1)
+                target_directory_input = input("请重新输入路径，或直接按 Enter 退出: ").strip()
+                if not target_directory_input:
+                    print("未输入有效路径，脚本退出。")
+                    sys.exit()
+                target_directory = target_directory_input
+
+        except KeyboardInterrupt:
+            print("\n操作被用户中断。脚本退出。")
+            sys.exit()
 
     organize_files_into_subdirs(target_directory)
     original_folders = extract_folder_names_to_file(target_directory)
@@ -389,7 +418,7 @@ if __name__ == "__main__":
             if renamed_to_chinese_folders:
                 add_pinyin_prefix_to_dirs(target_directory, renamed_to_chinese_folders)
 
-    # --- 新增：调用清理函数 ---
+    # --- 移除：不再生成临时文件，因此无需清理 ---
     cleanup_temp_files(target_directory)
 
     print("\n所有流程执行完毕。")

@@ -164,45 +164,103 @@ def load_default_path_from_settings():
     except Exception:
         return os.path.join(os.path.expanduser("~"), "Downloads")
 
+
+import argparse
+
 def main():
-    """
-    主函数, 用于获取用户输入并启动处理流程.
-    """
-    # --- 修改：动态加载默认路径 ---
-    default_dir = load_default_path_from_settings()
+    parser = argparse.ArgumentParser(description="Split EPUB files into smaller parts.")
+    parser.add_argument("--input", "-i", help="Input directory containing EPUB files")
+    parser.add_argument("--splits", "-s", type=int, help="Number of splits per file (Optional)")
     
-    # --- 获取用户输入 ---
-    input_dir = input(f"请输入 EPUB 文件所在的目录 (默认为: {default_dir}): ").strip()
-    if not input_dir:
-        input_dir = default_dir
+    args = parser.parse_args()
+    
+    # 优先检查命令行参数
+    if args.input:
+        input_dir = args.input
+        
+        if not os.path.isdir(input_dir):
+            print(f"[FATAL] Error: Directory '{input_dir}' does not exist.")
+            sys.exit(1)
 
-    if not os.path.isdir(input_dir):
-        print(f"[FATAL] 错误: 目录 '{input_dir}' 不存在. 程序退出.")
-        sys.exit(1)
+        # --- 获取分割数量 (交互式或参数) ---
+        if args.splits:
+            num_splits = args.splits
+        else:
+            # 如果未提供参数，则询问用户
+            print(f"检测到输入目录: {input_dir}", flush=True)
+            while True:
+                try:
+                    print("请输入每个 EPUB 文件需要分割的份数 (默认为 3): ", flush=True)
+                    # Use sys.stdin.readline to avoid any prompt issues with input()
+                    user_input_line = sys.stdin.readline()
+                    if not user_input_line:
+                        # EOF case
+                        break
+                    
+                    user_input = user_input_line.strip()
+                    
+                    if not user_input:
+                        num_splits = 3
+                        print("使用默认值: 3", flush=True)
+                        break
+                    val = int(user_input)
+                    if val > 0:
+                        num_splits = val
+                        break
+                    else:
+                        print("错误: 分割数必须大于 0。", flush=True)
+                except ValueError:
+                    print("错误: 请输入有效的整数。", flush=True)
 
-    while True:
-        try:
-            num_splits_str = input("请输入您想将每本书分割成的文件数量: ").strip()
-            num_splits = int(num_splits_str)
-            if num_splits > 0:
-                break
-            else:
-                print("[ERROR] 分割数量必须是大于0的整数, 请重新输入.")
-        except ValueError:
-            print("[ERROR] 无效输入. 请输入一个数字.")
+        # --- Create Output Directory ---
+        output_dir = os.path.join(input_dir, OUTPUT_DIR_NAME)
+        os.makedirs(output_dir, exist_ok=True)
+        print(f"\n[INFO] Split files will be saved to: {output_dir}")
 
-    # --- 创建输出目录 ---
-    output_dir = os.path.join(input_dir, OUTPUT_DIR_NAME)
-    os.makedirs(output_dir, exist_ok=True)
-    print(f"\n[INFO] 分割后的文件将保存在: {output_dir}")
+        # --- Process Files ---
+        for filename in os.listdir(input_dir):
+            if filename.lower().endswith('.epub'):
+                epub_path = os.path.join(input_dir, filename)
+                process_epub_file(epub_path, num_splits, output_dir)
+                
+        print("\n[SUCCESS] All files processed!")
+        
+    else:
+        # Interactive Mode (No args provided at all)
+        default_dir = load_default_path_from_settings()
+        
+        # --- Get User Input ---
+        input_dir = input(f"Please enter the directory containing EPUB files (Default: {default_dir}): ").strip()
+        if not input_dir:
+            input_dir = default_dir
 
-    # --- 遍历并处理目录中的所有 EPUB 文件 ---
-    for filename in os.listdir(input_dir):
-        if filename.lower().endswith('.epub'):
-            epub_path = os.path.join(input_dir, filename)
-            process_epub_file(epub_path, num_splits, output_dir)
-            
-    print("\n[SUCCESS] 所有文件处理完毕!")
+        if not os.path.isdir(input_dir):
+            print(f"[FATAL] Error: Directory '{input_dir}' does not exist. Exiting.")
+            sys.exit(1)
+
+        while True:
+            try:
+                num_splits_str = input("Enter the number of parts to split each book into: ").strip()
+                num_splits = int(num_splits_str)
+                if num_splits > 0:
+                    break
+                else:
+                    print("[ERROR] Number of splits must be > 0.")
+            except ValueError:
+                print("[ERROR] Invalid input. Please enter a number.")
+
+        # --- Create Output Directory ---
+        output_dir = os.path.join(input_dir, OUTPUT_DIR_NAME)
+        os.makedirs(output_dir, exist_ok=True)
+        print(f"\n[INFO] Split files will be saved to: {output_dir}")
+
+        # --- Process Files ---
+        for filename in os.listdir(input_dir):
+            if filename.lower().endswith('.epub'):
+                epub_path = os.path.join(input_dir, filename)
+                process_epub_file(epub_path, num_splits, output_dir)
+                
+        print("\n[SUCCESS] All files processed!")
 
 if __name__ == '__main__':
     main()

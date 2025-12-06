@@ -138,8 +138,19 @@ PDF_DPI = 300
 # --- 配置结束 ---
 
 
-def print_progress_bar(iteration, total, prefix='', suffix='', decimals=1, length=50, fill='█', print_end="\r"):
-    """在终端打印进度条。"""
+def print_progress_bar(iteration, total, prefix='', suffix='', decimals=1, length=100, fill='█', printEnd="\r"):
+    """
+    Call in a loop to create terminal progress bar
+    @params:
+        iteration   - Required  : current iteration (Int)
+        total       - Required  : total iterations (Int)
+        prefix      - Optional  : prefix string (Str)
+        suffix      - Optional  : suffix string (Str)
+        decimals    - Optional  : positive number of decimals in percent complete (Int)
+        length      - Optional  : character length of bar (Int)
+        fill        - Optional  : bar fill character (Str)
+        printEnd    - Optional  : end character (e.g. "\r", "\r\n") (Str)
+    """
     if total == 0:
         percent_str = "0.0%"
         filled_length = 0
@@ -149,11 +160,22 @@ def print_progress_bar(iteration, total, prefix='', suffix='', decimals=1, lengt
         filled_length = int(length * iteration // total)
 
     bar = fill * filled_length + '-' * (length - filled_length)
-    sys.stdout.write(f'\r{prefix} |{bar}| {percent_str} {suffix}')
-    sys.stdout.flush()
-    if iteration == total:
-        sys.stdout.write('\n')
+    
+    # 智能判断：如果是UI环境(非TTY)，改为每2%输出一次换行，确保前端能实时收到
+    is_tty = sys.stdout.isatty()
+    step = max(1, total // 50) 
+    
+    if not is_tty:
+        # 非TTY环境，仅在关键节点输出，并且使用换行符
+        if iteration % step == 0 or iteration == total:
+             sys.stdout.write(f'{prefix} |{bar}| {percent_str} {suffix}\n')
+             sys.stdout.flush()
+    else:
+        # 标准TTY环境，使用\r刷新
+        sys.stdout.write(f'\r{prefix} |{bar}| {percent_str} {suffix}')
         sys.stdout.flush()
+        if iteration == total:
+            sys.stdout.write('\n')
 
 
 def merge_to_long_image(source_project_dir, output_long_image_dir, long_image_filename_only, target_width=None):
@@ -337,7 +359,8 @@ def split_long_image_v2(long_image_path, output_split_dir, min_solid_band_height
         print_progress_bar(0, img_height, prefix='    扫描长图:    ', suffix='完成', length=40)
 
         for y in range(img_height):
-            print_progress_bar(y + 1, img_height, prefix='    扫描长图:    ', suffix=f'第 {y+1}/{img_height} 行', length=40)
+            if y % 100 == 0 or y == img_height - 1:
+                print_progress_bar(y + 1, img_height, prefix='    扫描长图:    ', suffix=f'第 {y+1}/{img_height} 行', length=40)
 
             is_solid = is_solid_color_row(pixels, y, img_width, band_colors_list, tolerance)
 
@@ -810,6 +833,9 @@ def create_pdf_from_images(image_paths_list, output_pdf_dir, pdf_filename_only):
         images_for_pdf[0].save(pdf_full_path, save_all=True, append_images=images_for_pdf[1:], resolution=float(PDF_DPI), quality=PDF_IMAGE_JPEG_QUALITY, optimize=True)
         print(f"    成功创建 PDF: {pdf_full_path}")
         return pdf_full_path
+    except Exception as e:
+        print(f"    创建 PDF 失败: {e}")
+        return None
     finally:
         for img_obj in images_for_pdf: 
             img_obj.close()
@@ -826,53 +852,9 @@ def cleanup_intermediate_dirs(long_img_dir, split_img_dir):
             except Exception as e:
                 print(f"    删除文件夹 '{dir_path}' 失败: {e}")
 
-
-if __name__ == "__main__":
-    print("🚀 自动化图片批量处理流程 (V5 - 智能融合版)")
-    print("💡 特色：V2传统分割 + V4极速分割 双重保障，PDF创建失败时自动切换方法！")
-    print("🎨 优化：使用预设韩漫常见背景色，提高分割速度和效率！")
-    print("📋 工作流程: 1.合并 -> 2.智能分割+PDF创建 -> 3.清理 -> 4.移动成功项")
-    print("🔄 失败判定：V2方式分割后PDF创建失败时，清理V2分割文件并自动切换到V4方式")
-    print("⚠️  注意：V2分割失败的判定标准为PDF创建失败，而非单纯的分割失败")
-    print("-" * 80)
-    
-    def load_default_path_from_settings():
-        """从共享设置文件中读取默认工作目录。"""
-        try:
-            script_dir = os.path.dirname(os.path.abspath(__file__))
-            settings_path = os.path.join(script_dir, '..', 'shared_assets', 'settings.json')
-            if not os.path.exists(settings_path):
-                settings_path = os.path.join(os.path.dirname(script_dir), 'shared_assets', 'settings.json')
-            with open(settings_path, 'r', encoding='utf-8') as f: 
-                return json.load(f).get("default_work_dir")
-        except:
-            return os.path.join(os.path.expanduser("~"), "Downloads")
-    
-    default_root_dir_name = load_default_path_from_settings() or "."
-
-    root_input_dir = ""
-    while True:
-        prompt_message = (
-            f"请输入包含一个或多个项目子文件夹的【根目录】路径。\n"
-            f"脚本将递归处理每个项目子文件夹中的所有图片。\n"
-            f"(直接按 Enter 键将使用默认路径: '{default_root_dir_name}'): "
-        )
-        user_provided_path = input(prompt_message).strip()
-        current_path_to_check = user_provided_path if user_provided_path else default_root_dir_name
-        if not user_provided_path:
-            print(f"使用默认路径: {current_path_to_check}")
-
-        abs_path_to_check = os.path.abspath(current_path_to_check)
-        if os.path.isdir(abs_path_to_check):
-            root_input_dir = abs_path_to_check
-            print(f"已选定根处理目录: {root_input_dir}")
-            break
-        else:
-            print(f"错误: 路径 '{abs_path_to_check}' 不是一个有效的目录或不存在。")
-
+def process_root_directory(root_input_dir):
     # 根据根目录名称创建唯一的PDF输出文件夹
-    root_dir_basename = os.path.basename(os.path.abspath(root_input_dir))
-    overall_pdf_output_dir = os.path.join(root_input_dir, f"{root_dir_basename}_pdfs")
+    overall_pdf_output_dir = os.path.join(root_input_dir, "processed_files")
     os.makedirs(overall_pdf_output_dir, exist_ok=True)
     
     # 创建用于存放成功处理项目的文件夹
@@ -883,12 +865,39 @@ if __name__ == "__main__":
     subdirectories = [d for d in os.listdir(root_input_dir)
                       if os.path.isdir(os.path.join(root_input_dir, d)) and \
                          d != SUCCESS_MOVE_SUBDIR_NAME and \
+                         d != "processed_files" and \
                          d != os.path.basename(overall_pdf_output_dir) and \
                          not d.startswith('.')]
 
+    # --- 智能单项目模式检测 ---
     if not subdirectories:
-        print(f"\n在根目录 '{root_input_dir}' 中未找到可处理的项目子文件夹。")
-        sys.exit()
+        # Check if the root directory itself contains images
+        image_files = [f for f in os.listdir(root_input_dir) if f.lower().endswith(('.png', '.jpg', '.jpeg', '.webp'))]
+        if image_files:
+            print(f"\n⚠️  注意：目录 '{os.path.basename(root_input_dir)}' 直接包含图片。")
+            print("    -> 切换到【单项目处理模式】。")
+            
+            # Key Logic: Move root up one level, and treat the original root as the single subdirectory
+            target_project_name = os.path.basename(root_input_dir)
+            new_root_dir = os.path.dirname(root_input_dir)
+            
+            # Correction: We must ensure we don't break paths if we change root_input_dir
+            # But the rest of the script (pdf output, success move) relies on root_input_dir
+            # If we change root_input_dir to parent, PDF output goes to Parent/processed_files
+            # This is probably ACCEPTABLE and Standardized behavior.
+            
+            root_input_dir = new_root_dir
+            subdirectories = [target_project_name]
+            
+            # Re-create output dirs based on new root
+            overall_pdf_output_dir = os.path.join(root_input_dir, "processed_files")
+            os.makedirs(overall_pdf_output_dir, exist_ok=True)
+            success_move_target_dir = os.path.join(root_input_dir, SUCCESS_MOVE_SUBDIR_NAME)
+            os.makedirs(success_move_target_dir, exist_ok=True)
+            
+        else:
+            print(f"\n在根目录 '{root_input_dir}' 中未找到可处理的项目子文件夹（也未直接包含图片）。")
+            return
 
     sorted_subdirectories = natsort.natsorted(subdirectories)
     print(f"\n将按顺序处理以下 {len(sorted_subdirectories)} 个项目文件夹: {', '.join(sorted_subdirectories)}")
@@ -913,17 +922,20 @@ if __name__ == "__main__":
 
         pdf_created_for_this_subdir = False
         created_pdf_path = None
-        repacked_final_paths = None
         
         if created_long_image_path:
             # ▼▼▼ 调用 V5 融合分割函数（包含 PDF 创建失败自动切换逻辑）▼▼▼
-            repacked_final_paths, created_pdf_path = split_long_image_hybrid_with_pdf_fallback(
+            # Note: split_long_image_hybrid_with_pdf_fallback needs to returns paths
+            # In previous code it returned: repacked_final_paths, created_pdf_path
+            # Let's ensure variable unpacking handles it safely
+            result = split_long_image_hybrid_with_pdf_fallback(
                 created_long_image_path, 
                 path_split_images_output_dir,
                 overall_pdf_output_dir,
                 f"{subdir_name}.pdf",
                 subdir_name
             )
+            created_pdf_path = result[1] if result else None
             
             if created_pdf_path: 
                 pdf_created_for_this_subdir = True
@@ -965,3 +977,73 @@ if __name__ == "__main__":
     print(f"所有成功生成的PDF文件（如有）已保存在: {overall_pdf_output_dir}")
     print(f"所有成功处理的原始项目文件夹（如有）已移至: {success_move_target_dir}")
     print("🎉 V5 智能融合版脚本执行完毕！")
+
+
+if __name__ == "__main__":
+    import argparse
+    import sys
+
+    print("🚀 自动化图片批量处理流程 (V5 - 智能融合版)")
+    print("💡 特色：V2传统分割 + V4极速分割 双重保障，PDF创建失败时自动切换方法！")
+    print("🎨 优化：使用预设韩漫常见背景色，提高分割速度和效率！")
+    print("📋 工作流程: 1.合并 -> 2.智能分割+PDF创建 -> 3.清理 -> 4.移动成功项")
+    print("🔄 失败判定：V2方式分割后PDF创建失败时，清理V2分割文件并自动切换到V4方式")
+    print("⚠️  注意：V2分割失败的判定标准为PDF创建失败，而非单纯的分割失败")
+    print("-" * 80)
+    
+    # 1. 获取默认工作目录
+    try:
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        backend_dir = os.path.dirname(os.path.dirname(current_dir))
+        if backend_dir not in sys.path:
+             sys.path.insert(0, backend_dir)
+        from backend.utils import get_default_work_dir
+        default_work_dir = get_default_work_dir()
+    except Exception:
+        default_work_dir = os.path.join(os.path.expanduser("~"), "Downloads")
+    
+    parser = argparse.ArgumentParser(description="Process Images V5")
+    parser.add_argument("--input", help="Input directory")
+    args = parser.parse_args()
+
+    target_directory = ""
+
+    if args.input:
+        if os.path.isdir(args.input):
+            target_directory = args.input
+            print(f"Using input directory from args: {target_directory}")
+        else:
+            print(f"Error: Provided input '{args.input}' is not a valid directory.")
+            sys.exit(1)
+    else:
+        try:
+            # Fallback for piped input or interactive
+            if not sys.stdin.isatty():
+                 possible_input = sys.stdin.read().strip()
+                 if possible_input and os.path.isdir(possible_input):
+                      target_directory = possible_input
+                      print(f"Received path via pipe: {target_directory}")
+            
+            if not target_directory:
+                print(f"默认工作目录: {default_work_dir}")
+                target_directory_input = input(f"请输入【根目录】路径 (直接按 Enter 使用默认): ").strip()
+                
+                target_directory = target_directory_input if target_directory_input else default_work_dir
+                if not target_directory_input:
+                    print(f"    使用默认路径: {target_directory}")
+
+            while not os.path.isdir(target_directory):
+                print(f"错误: '{target_directory}' 不是一个有效的目录路径。")
+                if not sys.stdin.isatty():
+                     sys.exit(1)
+                target_directory_input = input("请重新输入路径，或直接按 Enter 退出: ").strip()
+                if not target_directory_input:
+                    print("未输入有效路径，脚本退出。")
+                    sys.exit()
+                target_directory = target_directory_input
+
+        except KeyboardInterrupt:
+            print("\n操作被用户中断。脚本退出。")
+            sys.exit()
+
+    process_root_directory(target_directory)

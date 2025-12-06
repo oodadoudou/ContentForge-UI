@@ -2,6 +2,7 @@ from fastapi import APIRouter, HTTPException, BackgroundTasks
 from typing import List, Dict
 import uuid
 import os
+import json
 import logging
 from backend.models import TaskRequest, TaskStatus, Settings
 from backend.services.scripts_catalog import SCRIPTS, get_script_command, ScriptDef
@@ -61,3 +62,26 @@ async def stop_task():
     """Stops the currently running task (single runner model for now)"""
     await runner.terminate()
     return {"status": "termination_requested"}
+
+@router.post("/input")
+async def send_input(data: Dict[str, str]):
+    """Sends input to the running task's stdin"""
+    input_text = data.get("input", "")
+    await runner.write_stdin(input_text)
+    return {"status": "input_sent"}
+
+@router.get("/diritto/extracted-urls")
+async def get_extracted_urls():
+    """Retrieve extracted Diritto URLs from the saved JSON file"""
+    file_path = os.path.join(PROJECT_ROOT, "diritto_extracted_urls.json")
+    
+    if os.path.exists(file_path):
+        try:
+            with open(file_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            return data
+        except Exception as e:
+            logger.error(f"Failed to read extracted URLs: {e}")
+            raise HTTPException(status_code=500, detail="Failed to read extracted URLs")
+    
+    return {"urls": []}

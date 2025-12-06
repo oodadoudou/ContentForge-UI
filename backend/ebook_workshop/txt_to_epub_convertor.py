@@ -222,16 +222,23 @@ def select_reader_type():
     
     while True:
         try:
-            choice = input("请选择阅读器类型 (默认选择1): ").strip()
+            print("请选择阅读器类型 (默认选择1): ", flush=True)
+            choice_line = sys.stdin.readline()
+            if not choice_line:
+                 # EOF
+                 choice = "1"
+            else:
+                 choice = choice_line.strip()
+
             if not choice:
                 choice = "1"  # 默认选择静读天下
             
             if choice in READER_TYPES:
                 return choice, READER_TYPES[choice]
             else:
-                print("❌ 无效的选择，请重新选择")
+                print("❌ 无效的选择，请重新选择", flush=True)
         except (ValueError, KeyboardInterrupt):
-            print("\n❌ 输入无效，请重新选择")
+            print("\n❌ 输入无效，请重新选择", flush=True)
 
 def select_epub_style(reader_type_info):
     """让用户选择EPUB样式"""
@@ -263,7 +270,13 @@ def select_epub_style(reader_type_info):
     
     while True:
         max_choice = len(style_options)
-        choice = input(f"请选择样式 (1-{max_choice}，默认为1，p=预览): ").strip().lower()
+        print(f"请选择样式 (1-{max_choice}，默认为1，p=预览): ", flush=True)
+        choice_line = sys.stdin.readline()
+        if not choice_line:
+            choice = "1"
+        else:
+            choice = choice_line.strip().lower()
+
         if not choice:
             choice = "1"
         
@@ -369,15 +382,25 @@ def scan_directory(work_dir):
     if css_content is None:
         print("  [提示] 未在工作目录中找到CSS文件，请选择内置样式...")
         
-        # 选择阅读器类型
-        reader_type_key, reader_type_info = select_reader_type()
+        # 默认值 (Fallback)
+        selected_style_key = "1"
+        reader_type_info = READER_TYPES["1"]
         
-        # 选择样式
-        selected_style_key = select_epub_style(reader_type_info)
-        
-        if selected_style_key is None:
-            print(f"\n[用户取消] 用户取消了样式选择，程序退出")
-            sys.exit(0)
+        try:
+            # 选择阅读器类型
+            reader_type_key, reader_type_info = select_reader_type()
+            
+            # 选择样式
+            selected_style_key = select_epub_style(reader_type_info)
+            
+            if selected_style_key is None:
+                print(f"\n[用户取消] 用户取消了样式选择，程序退出")
+                sys.exit(0)
+                
+        except EOFError:
+             print("  [自动化] 未检测到输入或输入流已关闭，使用默认样式：静读天下 - 灰度层次。")
+             selected_style_key = "1"
+             reader_type_info = READER_TYPES["1"]
         
         # 根据阅读器类型获取样式配置
         if reader_type_info['css_dir'] == 'Moonreader':
@@ -405,17 +428,9 @@ def scan_directory(work_dir):
 def get_toc_rules():
     """向用户询问并获取提取目录的正则表达式规则。"""
     print("\n--- 步骤 1: 定义目录规则 ---")
-    use_default = input("是否使用默认规则提取目录? ('#' 代表一级, '##' 代表二级) (按回车确认, 输入n修改): ").lower()
-    
-    if use_default != 'n':
-        return r'^[\s　]*#\s*(.*)', r'^[\s　]*##\s*(.*)'
-    else:
-        level1_regex = input("请输入一级目录的正则表达式 (例如: ^第.*?章): ").strip()
-        level2_regex = input(r"请输入二级目录的正则表达式 (例如: ^\d+\.\d+): ").strip()
-        if not level1_regex:
-            print("[错误] 一级目录的正则表达式不能为空。")
-            sys.exit(1)
-        return level1_regex, level2_regex
+    print("  [自动化] 使用默认规则提取目录：'#' 代表一级标题, '##' 代表二级标题。")
+    # 直接返回默认规则，移除修改功能
+    return r'^[\s　]*#\s*(.*)', r'^[\s　]*##\s*(.*)'
 
 def extract_toc_from_text(txt_path, level1_regex, level2_regex):
     """根据正则表达式从TXT文件中提取目录结构。"""
@@ -460,33 +475,61 @@ def confirm_and_edit_toc(current_txt_file, l1_regex, l2_regex):
 
     while True:
         print_toc_for_confirmation(toc)
-        is_correct = input("以上目录是否正确? (按回车确认, 输入n修改): ").lower()
-        if is_correct != 'n':
-            return toc
-        
-        print("\n请按以下格式复制、修改并粘贴新的目录结构。")
-        print("格式说明: \n  - 一级目录: `- 标题`\n  - 二级目录: `    - 标题`")
-        print("完成编辑后，粘贴到此处，然后按两次回车键结束输入。")
-        
-        lines = []
-        while True:
-            try:
-                line = input()
-                if not line: break
-                lines.append(line)
-            except EOFError: break
-        
-        new_toc = []
-        for line in lines:
-            line_stripped = line.strip()
-            if line_stripped.startswith('- '):
-                title = line_stripped[2:].strip()
-                # 检查原始行是否以4个空格开头（二级目录）
-                if line.startswith('    - '):
-                    new_toc.append((title, 2))
+        try:
+            # 修改：合并提示语，确保用户能第一时间看到操作指南
+            print("\n以上目录是否正确? (输入 y 或 yes 确认，输入 n 修改): ", flush=True)
+            user_input_line = sys.stdin.readline()
+            if not user_input_line:
+                # EOF treat as yes
+                user_input = 'y'
+            else:
+                user_input = user_input_line.strip().lower()
+            
+            if user_input in ['y', 'yes']:
+                return toc
+            elif user_input == 'n':
+                print("\n请按以下格式复制、修改并粘贴新的目录结构。")
+                print("格式说明: \n  - 一级目录: `- 标题`\n  - 二级目录: `    - 标题`")
+                print("完成编辑后，粘贴到此处，然后按两次回车键结束输入。")
+                
+                lines = []
+                lines = []
+                while True:
+                    try:
+                        # input() is fine here because users are pasting bulk text,
+                        # but readline might be safer for consistency.
+                        # However, for huge pastes, readline loop is standard.
+                        line = sys.stdin.readline()
+                        if not line: break
+                        # If user pastes and hits enter twice, we need to detect that empty line logic
+                        # original code used input() which returns line without newline.
+                        # readline keeps newline.
+                        if line.strip() == "":
+                             # check if it's truly double enter or just empty line
+                             break
+                        lines.append(line)
+                    except EOFError: break
+                
+                new_toc = []
+                for line in lines:
+                    line_stripped = line.strip()
+                    if line_stripped.startswith('- '):
+                        title = line_stripped[2:].strip()
+                        # 检查原始行是否以4个空格开头（二级目录）
+                        if line.startswith('    - '):
+                            new_toc.append((title, 2))
+                        else:
+                            new_toc.append((title, 1))
+                if new_toc:
+                    toc = new_toc
                 else:
-                    new_toc.append((title, 1))
-        toc = new_toc
+                    print("未检测到有效输入，保留原目录。")
+            else:
+                 print("  [提示] 输入无效，请输入 y, yes 或 n。")
+
+        except EOFError:
+             print("  [自动化] 输入流结束，默认确认目录正确。")
+             return toc
 
 def text_to_html(text):
     """将纯文本转换为简单的 HTML，段落用 <p> 包裹。"""
@@ -499,8 +542,19 @@ def create_epub(txt_path, final_toc, css_content, cover_path, l1_regex, l2_regex
     """核心函数：创建 EPUB 文件。"""
     default_book_name = os.path.splitext(os.path.basename(txt_path))[0]
     print(f"\n--- 步骤 3: 确认电子书标题 ---")
-    new_title = input(f"请输入电子书标题 (默认为: '{default_book_name}'): ").strip()
-    book_name = new_title if new_title else default_book_name
+    try:
+        print(f"请输入电子书标题 (默认为: '{default_book_name}'): ", flush=True)
+        new_title_line = sys.stdin.readline()
+        if not new_title_line:
+            new_title = ""
+        else:
+             new_title = new_title_line.strip()
+
+        book_name = new_title if new_title else default_book_name
+    except EOFError:
+        book_name = default_book_name
+        print(f"  [自动化] 输入流已关闭，使用默认标题: {book_name}", flush=True)
+
     print(f"[LOG] 电子书标题将设为: '{book_name}'")
     print("\n--- 步骤 4: 正在生成 EPUB 文件... ---")
     
@@ -697,19 +751,47 @@ def load_default_path_from_settings():
     except Exception:
         return os.path.join(os.path.expanduser("~"), "Downloads")
 
+import argparse
+
 if __name__ == "__main__":
     print("="*60)
     print(" " * 18 + "TXT to EPUB 转换器")
     print("="*60)
     
-    # --- 修改：动态加载默认路径并获取用户输入 ---
-    default_path = load_default_path_from_settings()
-    path_input = input(f"请输入TXT文件所在的目录 (默认为: {default_path}): ").strip()
-    work_directory = path_input if path_input else default_path
+    parser = argparse.ArgumentParser(description="Convert TXT files to EPUB.")
+    parser.add_argument("--input", "-i", type=str, help="Directory containing TXT files or single TXT file")
     
-    if not os.path.isdir(work_directory):
-        print(f"\n[错误] 目录 '{work_directory}' 不存在。请检查路径是否正确。")
+    args = parser.parse_args()
+    
+    work_directory = None
+    
+    if args.input:
+        work_directory = args.input
+        if os.path.isfile(work_directory):
+            # If input is a file, set work_directory to its parent
+            work_directory = os.path.dirname(work_directory)
+    else:
+        # --- 修改：动态加载默认路径并获取用户输入 ---
+        default_path = load_default_path_from_settings()
+        try:
+            print(f"请输入TXT文件所在的目录 (默认为: {default_path}): ", flush=True)
+            path_input_line = sys.stdin.readline()
+            if not path_input_line:
+                 path_input = ""
+            else:
+                 path_input = path_input_line.strip()
+
+            work_directory = path_input if path_input else default_path
+        except EOFError:
+             pass
+
+    if not work_directory or not os.path.exists(work_directory):
+        print(f"\n[错误] 目录 '{work_directory}' 不存在或未提供。")
         sys.exit(1)
+
+    if os.path.isfile(args.input) if args.input else False:
+         # Single file mode simulation for now just by setting the directory
+         pass
         
     print(f"\n工作目录设置为: {work_directory}")
     # --- 修改结束 ---
@@ -720,17 +802,30 @@ if __name__ == "__main__":
     
     txt_files_list, cover_image, css_data, style_key, reader_info = scan_directory(work_directory)
     
+    # Always assume interactive unless proved otherwise (EOFError during input will solve it)
+    is_interactive = True
+    
     print(f"\n在目录中总共找到了 {len(txt_files_list)} 个 TXT 文件，将逐一处理。")
     print("-" * 60)
     
     for i, current_txt_file in enumerate(txt_files_list):
         print(f"\n>>> 开始处理第 {i+1}/{len(txt_files_list)} 个文件: {os.path.basename(current_txt_file)}")
         
-        l1_regex, l2_regex = get_toc_rules()
-        final_toc_list = confirm_and_edit_toc(current_txt_file, l1_regex, l2_regex)
+        l1_regex, l2_regex = None, None
+        final_toc_list = None
         
+        if is_interactive:
+            l1_regex, l2_regex = get_toc_rules()
+            final_toc_list = confirm_and_edit_toc(current_txt_file, l1_regex, l2_regex)
+        else:
+             # Default TOC rules for automation: # and ##
+             l1_regex = r'^[\s　]*#\s*(.*)'
+             l2_regex = r'^[\s　]*##\s*(.*)'
+             print(f"  [自动化] 使用默认目录规则: # (一级), ## (二级)")
+             final_toc_list = extract_toc_from_text(current_txt_file, l1_regex, l2_regex)
+
         if final_toc_list is None:
-            print("因读取文件失败，跳过此文件。")
+            print("因读取文件失败或未确认目录，跳过此文件。")
             continue
             
         create_epub(current_txt_file, final_toc_list, css_data, cover_image, l1_regex, l2_regex, output_dir, style_key, reader_info)

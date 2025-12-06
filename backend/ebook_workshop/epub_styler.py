@@ -12,83 +12,173 @@ OUTPUT_DIR_NAME = "processed_files"
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-def get_new_css_content():
-    """根据新的目录结构，读取shared_assets中的CSS文件内容"""
-    css_path = os.path.join(PROJECT_ROOT, SHARED_ASSETS_DIR_NAME, NEW_CSS_FILENAME)
+def get_new_css_content(custom_css_path=None):
+    """根据新的目录结构，读取shared_assets中的CSS文件内容，或者读取自定义CSS文件"""
+    if custom_css_path:
+        css_path = custom_css_path
+    else:
+        css_path = os.path.join(PROJECT_ROOT, SHARED_ASSETS_DIR_NAME, NEW_CSS_FILENAME)
     
     if not os.path.exists(css_path):
-        print(f"错误: 样式文件 '{NEW_CSS_FILENAME}' 未在 '{SHARED_ASSETS_DIR_NAME}' 目录中找到。")
-        print(f"请确保 '{css_path}' 文件存在。")
+        print(f"错误: 样式文件 '{css_path}' 未找到。")
         return None
     
     with open(css_path, 'r', encoding='utf-8') as f:
         return f.read()
 
 def modify_single_epub(epub_path, output_dir, new_css_content):
-    """处理单个ePub文件，替换其CSS样式"""
-    base_name = os.path.basename(epub_path)
-    output_epub_path = os.path.join(output_dir, base_name)
+    """
+    修改单个ePub文件:
+    1. 解压
+    2. 添加/替换 CSS 文件
+    3. 更新所有 HTML 文件引入该 CSS
+    4. 重新打包
+    """
+    filename = os.path.basename(epub_path)
+    print(f"处理: {filename}")
     
-    # 创建一个临时目录来解压ePub
-    temp_extract_dir = tempfile.mkdtemp(prefix=f"{os.path.splitext(base_name)[0]}_")
+    # 创建临时解压目录
+    temp_dir = tempfile.mkdtemp(prefix=f"styler_{filename}_")
     
-    print(f"\n[+] 正在处理: {base_name}")
-
     try:
-        # 1. 解压 ePub 文件
-        with zipfile.ZipFile(epub_path, 'r') as zip_ref:
-            zip_ref.extractall(temp_extract_dir)
-            print(f"  -> 已解压到临时目录: {os.path.basename(temp_extract_dir)}")
-
-        # 2. 查找并替换所有 CSS 文件
-        css_replaced_count = 0
-        for root, _, files in os.walk(temp_extract_dir):
-            for file in files:
-                if file.endswith('.css'):
-                    css_file_path = os.path.join(root, file)
-                    with open(css_file_path, 'w', encoding='utf-8') as f:
-                        f.write(new_css_content)
-                    css_replaced_count += 1
-                    print(f"  -> 已替换样式文件: {os.path.relpath(css_file_path, temp_extract_dir)}")
+        # 1. 解压
+        with zipfile.ZipFile(epub_path, 'r') as zf:
+            zf.extractall(temp_dir)
+            
+        # 2. 确定 CSS 存放位置 (通常在 OEBPS/Styles 或 OEBPS/css，或者直接在根目录)
+        # 我们尝试找一个现有的 css 目录，如果没找到就在 OEBPS 下创建，或者根目录下
+        # 简单起见，我们搜索 OEBPS 目录
+        oebps_dir = None
+        for root, dirs, files in os.walk(temp_dir):
+            if "content.opf" in files:
+                oebps_dir = root
+                break
         
-        if css_replaced_count == 0:
-            print("  -> 警告: 未在该 ePub 中找到任何 CSS 文件。")
+        if not oebps_dir:
+            # 如果没找到 standard structure, use root
+            oebps_dir = temp_dir
+            
+        styles_dir = os.path.join(oebps_dir, "Styles")
+        if not os.path.exists(styles_dir):
+            # 尝试找 css 目录
+            styles_dir = os.path.join(oebps_dir, "css")
+            if not os.path.exists(styles_dir):
+                # 默认创建 Styles
+                styles_dir = os.path.join(oebps_dir, "Styles")
+                os.makedirs(styles_dir, exist_ok=True)
+                
+        # 写入新 CSS 文件
+        css_file_path = os.path.join(styles_dir, NEW_CSS_FILENAME)
+        with open(css_file_path, 'w', encoding='utf-8') as f:
+            f.write(new_css_content)
+            
+        # 计算 CSS 相对路径 (用于 HTML 引用)
+        # 注意: HTML 可能在 OEBPS/Text, OEBPS/, 等等.
+        
+        # 3. 遍历所有 HTML 文件并添加/更新链接
+        from bs4 import BeautifulSoup
+        
+        for root, dirs, files in os.walk(temp_dir):
+            for file in files:
+                if file.lower().endswith(('.html', '.xhtml', '.htm')):
+                    html_path = os.path.join(root, file)
+                    
+                    # 计算从 HTML 到 CSS 的相对路径
+                    rel_css_path = os.path.relpath(css_file_path, root).replace("\\", "/")
+                    
+                    with open(html_path, 'r', encoding='utf-8') as f:
+                        soup = BeautifulSoup(f, 'html.parser')
+                    
+                    # 检查是否已有该 link
+                    head = soup.find('head')
+                    if not head:
+                        # 如果没有 head, 创建一个 (针对不规范文档)
+                        head = soup.new_tag('head')
+                        if soup.html:
+                            soup.html.insert(0, head)
+                        else:
+                            # 极度不规范，跳过或整个包裹
+                            continue
+                            
+                    # 移除旧的同名 link (如果我们需要强制替换)
+                    # 或者我们只追加新的?
+                    # 现在的逻辑是追加/确保存在
+                    
+                    link_exists = False
+                    for link in head.find_all('link', rel='stylesheet'):
+                        if link.get('href') == rel_css_path:
+                            link_exists = True
+                            break
+                    
+                    if not link_exists:
+                        new_link = soup.new_tag('link', rel='stylesheet', type='text/css', href=rel_css_path)
+                        head.append(new_link)
+                        
+                        # 保存修改
+                        with open(html_path, 'w', encoding='utf-8') as f:
+                            f.write(str(soup))
 
-        # 3. 重新打包成 ePub
-        print(f"  -> 正在重新打包为: {base_name}")
-        with zipfile.ZipFile(output_epub_path, 'w', zipfile.ZIP_DEFLATED) as zip_out:
-            mimetype_path = os.path.join(temp_extract_dir, 'mimetype')
-            if os.path.exists(mimetype_path):
-                zip_out.write(mimetype_path, 'mimetype', compress_type=zipfile.ZIP_STORED)
-            else:
-                 print("  -> 警告: 未找到 mimetype 文件，这可能导致ePub文件无效。")
+        # 4. 重新打包
+        output_file_path = os.path.join(output_dir, filename)
+        
+        # 确保 manifest (content.opf) 包含新的 CSS 文件
+        # 这步比较复杂，因为需要解析 XML。
+        # 如果不加到 manifest，某些阅读器可能不加载。
+        # 简单起见，我们使用 epub_toolkit 的逻辑或尝试 patch content.opf
+        
+        # 简易版：先不改 content.opf，很多阅读器容错。
+        # 但为了稳健，我们应该尝试添加。
+        if oebps_dir:
+            opf_path = os.path.join(oebps_dir, "content.opf")
+            if os.path.exists(opf_path):
+                 update_manifest(opf_path, os.path.relpath(css_file_path, oebps_dir).replace("\\", "/"))
 
-            for root, _, files in os.walk(temp_extract_dir):
+        # Zip it up
+        with zipfile.ZipFile(output_file_path, 'w', zipfile.ZIP_DEFLATED) as zf:
+            for root, dirs, files in os.walk(temp_dir):
                 for file in files:
-                    if file == 'mimetype':
-                        continue
                     file_path = os.path.join(root, file)
-                    arcname = os.path.relpath(file_path, temp_extract_dir)
-                    zip_out.write(file_path, arcname)
-
-        print(f"  -> 处理完成, 已保存到: {os.path.relpath(output_epub_path)}")
+                    arcname = os.path.relpath(file_path, temp_dir)
+                    zf.write(file_path, arcname)
+                    
         return True
-
-    except zipfile.BadZipFile:
-        print(f"  -> 错误: '{base_name}' 不是一个有效的ZIP/ePub文件，已跳过。")
-        return False
+        
     except Exception as e:
-        print(f"  -> 处理 '{base_name}' 时发生未知错误: {e}")
+        print(f"处理失败 {filename}: {e}")
         return False
     finally:
-        # 4. 清理临时文件
-        shutil.rmtree(temp_extract_dir)
+        shutil.rmtree(temp_dir)
 
-def process_epub_directory(root_dir):
+def update_manifest(opf_path, css_rel_path):
+    """简单的 XML 处理以添加 item 到 manifest"""
+    try:
+        from xml.dom.minidom import parse
+        dom = parse(opf_path)
+        manifest = dom.getElementsByTagName('manifest')[0]
+        
+        # 检查是否已存在
+        for item in manifest.getElementsByTagName('item'):
+            if item.getAttribute('href') == css_rel_path:
+                return # 已存在
+        
+        # 添加 item
+        item = dom.createElement('item')
+        item.setAttribute('id', 'new_style_css')
+        item.setAttribute('href', css_rel_path)
+        item.setAttribute('media-type', 'text/css')
+        manifest.appendChild(item)
+        
+        with open(opf_path, 'w', encoding='utf-8') as f:
+            dom.writexml(f)
+    except Exception as e:
+        print(f"无法更新 manifest: {e}")
+
+
+def process_epub_directory(root_dir, css_file=None):
     """处理指定根目录下的所有ePub文件"""
     print("--- ePub 样式批量替换工具 ---")
     
-    new_css_content = get_new_css_content()
+    new_css_content = get_new_css_content(css_file)
     if new_css_content is None:
         return
 
@@ -132,21 +222,36 @@ def load_default_path_from_settings():
         return os.path.join(os.path.expanduser("~"), "Downloads")
 
 if __name__ == "__main__":
-    # --- 修改：动态加载默认路径 ---
-    default_path = load_default_path_from_settings()
-
-    # 获取用户输入
-    prompt_message = (
-        "请输入要处理的 ePub 文件所在的目录路径\n"
-        f"(直接按 Enter 键将使用默认路径: {default_path}): "
-    )
-    target_dir_input = input(prompt_message)
-
-    # 如果用户未输入（或输入为空白），则使用默认路径
-    target_dir = target_dir_input.strip().strip('\'"') if target_dir_input.strip() else default_path
+    import argparse
     
-    if not target_dir_input.strip():
-        print(f"未输入路径，将使用默认目录: {target_dir}")
+    parser = argparse.ArgumentParser(description="EPUB Styler")
+    parser.add_argument("--input", help="Input directory containing EPUB files")
+    parser.add_argument("--css", help="Path to CSS file (Optional, defaults to shared_assets/new_style.css)")
+    args = parser.parse_args()
+
+    # --- 修改：动态加载所有配置 ---
+    default_path = load_default_path_from_settings()
+    target_dir = ""
+
+    if args.input:
+        if os.path.isdir(args.input):
+            target_dir = args.input
+        else:
+            print(f"错误: 命令行提供的路径 '{args.input}' 无效。")
+            sys.exit(1)
+    else:
+        # 获取用户输入
+        prompt_message = (
+            "请输入要处理的 ePub 文件所在的目录路径\n"
+            f"(直接按 Enter 键将使用默认路径: {default_path}): "
+        )
+        target_dir_input = input(prompt_message)
+
+        # 如果用户未输入（或输入为空白），则使用默认路径
+        target_dir = target_dir_input.strip().strip('\'"') if target_dir_input.strip() else default_path
+        
+        if not target_dir_input.strip():
+            print(f"未输入路径，将使用默认目录: {target_dir}")
 
     # 检查最终确定的目录是否存在
     if not os.path.isdir(target_dir):
@@ -154,4 +259,4 @@ if __name__ == "__main__":
         print("请检查路径是否正确，或者默认路径是否存在。")
         sys.exit(1)
         
-    process_epub_directory(target_dir)
+    process_epub_directory(target_dir, css_file=args.css)

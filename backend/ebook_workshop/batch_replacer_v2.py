@@ -12,6 +12,7 @@ from tqdm import tqdm
 import html
 import sys
 import json
+import css_fixer
 
 # --- 屏蔽已知警告 ---
 warnings.filterwarnings("ignore", category=UserWarning, module='ebooklib')
@@ -24,42 +25,103 @@ REPORT_DIR_NAME = "compare_reference"
 HIGHLIGHT_STYLE = "background-color: #f1c40f; color: #000; padding: 2px; border-radius: 3px;"
 
 def find_rules_file(directory: Path) -> Path:
-    """在指定目录中查找规则文件。"""
-    rules_files = list(directory.glob('rules.txt'))
-    if rules_files:
-        return rules_files[0]
+    """在指定目录中查找规则文件。仅支持: rules.txt, rule.txt, 规则.txt (以及常见的 .txt.txt 错误命名)"""
+    candidates = [
+        'rules.txt', 'rule.txt', '规则.txt',
+        'rules.txt.txt', 'rule.txt.txt', '规则.txt.txt'
+    ]
+    
+    for candidate in candidates:
+        f_path = directory / candidate
+        if f_path.exists():
+            return f_path
+            
+    for candidate in candidates:
+        found = list(directory.glob(candidate)) 
+        if found:
+            return found[0]
+            
     return None
 
 def load_rules(rules_file: Path) -> pd.DataFrame:
-    """加载替换规则, 仅支持 .txt 格式。"""
+    """加载替换规则, 支持标准格式及 Moon Reader (#->#) 格式。"""
     print(f"[*] 正在从 {rules_file.name} 加载替换规则...")
     rules_list = []
-    try:
-        with open(rules_file, 'r', encoding='utf-8') as f:
-            for i, line in enumerate(f, 1):
-                line = line.strip()
-                if not line or line.startswith('#'):
-                    continue
-                
-                match = re.match(r'^(.*?)\s*->\s*(.*?)\s*\(Mode:\s*(Text|Regex)\s*\)$', line, re.IGNORECASE)
-                
-                if not match:
-                    match_no_replacement = re.match(r'^(.*?)\s*->\s*\(Mode:\s*(Text|Regex)\s*\)$', line, re.IGNORECASE)
-                    if match_no_replacement:
-                        original, mode = match_no_replacement.groups()
-                        replacement = ""
-                    else:
-                        print(f"[!] 警告: 第 {i} 行规则格式不正确，已忽略: \"{line}\"")
-                        continue
-                else:
-                    original, replacement, mode = match.groups()
+    lines_to_write = []
+    file_needs_update = False
 
+    try:
+        # 1. Read all lines
+        with open(rules_file, 'r', encoding='utf-8') as f:
+            raw_lines = f.readlines()
+
+        # 2. Process lines
+        for i, line in enumerate(raw_lines, 1):
+            original_line = line
+            line = line.strip()
+            
+            if not line or line.startswith('#'):
+                lines_to_write.append(original_line)
+                continue
+
+            # Check for Moon Reader format: "Old#->#New"
+            moon_reader_match = re.match(r'^(.*?)#->#(.*?)$', line)
+            
+            # Check for Standard format: "Old -> New (Mode: Text/Regex)"
+            standard_match = re.match(r'^(.*?)\s*->\s*(.*?)\s*\(Mode:\s*(Text|Regex)\s*\)$', line, re.IGNORECASE)
+            
+            # Check for Legacy format without replacement: "Old -> (Mode: Text)"
+            legacy_no_repl_match = re.match(r'^(.*?)\s*->\s*\(Mode:\s*(Text|Regex)\s*\)$', line, re.IGNORECASE)
+
+            if moon_reader_match:
+                # Convert Moon Reader to Standard (Mode: Text)
+                original, replacement = moon_reader_match.groups()
+                mode = "Text"
+                file_needs_update = True
+                
+                # Create standard formatted string
+                new_line_str = f"{original} -> {replacement} (Mode: {mode})\n"
+                lines_to_write.append(new_line_str)
+                
+                rules_list.append({
+                    'Original': original,
+                    'Replacement': replacement,
+                    'Mode': mode
+                })
+                # print(f"    [Conv] {original} -> {replacement}") # Optional logging
+
+            elif standard_match:
+                original, replacement, mode = standard_match.groups()
+                lines_to_write.append(original_line) # Keep original if already standard
                 rules_list.append({
                     'Original': original.strip(),
                     'Replacement': replacement.strip(),
                     'Mode': mode.strip().capitalize()
                 })
-        
+
+            elif legacy_no_repl_match:
+                original, mode = legacy_no_repl_match.groups()
+                lines_to_write.append(original_line)
+                rules_list.append({
+                    'Original': original.strip(),
+                    'Replacement': "",
+                    'Mode': mode.strip().capitalize()
+                })
+
+            else:
+                print(f"[!] 警告: 第 {i} 行规则格式不正确，已忽略: \"{line}\"")
+                lines_to_write.append(original_line)
+                continue
+
+        # 3. Overwrite file if needed
+        if file_needs_update:
+            try:
+                with open(rules_file, 'w', encoding='utf-8') as f:
+                    f.writelines(lines_to_write)
+                print(f"[*] 已将 {rules_file.name} 转换为标准模板格式。")
+            except Exception as e:
+                print(f"[!] 警告: 无法更新规则文件格式: {e}")
+
         df = pd.DataFrame(rules_list)
         
         if df.empty:
@@ -69,7 +131,8 @@ def load_rules(rules_file: Path) -> pd.DataFrame:
 
     except Exception as e:
         print(f"[!] 加载规则文件失败: {e}")
-        exit(1)
+        # Return empty DF or exit? Original code exits.
+        sys.exit(1)
 
 def process_and_get_changes(content: str, rules: pd.DataFrame) -> tuple[str, list]:
     """
@@ -120,18 +183,26 @@ def generate_report(report_path: Path, changes_log: list, source_filename: str):
         print(f"[!] 模板文件不存在: {template_path}")
         return
     
-    # 计算从报告文件到shared_assets的相对路径
-    report_dir = report_path.parent
+    # 获取CSS和JS内容
     shared_assets_dir = project_root / 'shared_assets'
-    try:
-        relative_path = os.path.relpath(shared_assets_dir, report_dir)
-        css_path = f"{relative_path}/report_styles.css".replace('\\', '/')
-        js_path = f"{relative_path}/report_scripts.js".replace('\\', '/')
-    except ValueError:
-        # 如果无法计算相对路径，使用默认路径
-        css_path = "shared_assets/report_styles.css"
-        js_path = "shared_assets/report_scripts.js"
+    css_file_path = shared_assets_dir / 'report_styles.css'
+    js_file_path = shared_assets_dir / 'report_scripts.js'
     
+    css_content = ""
+    try:
+        css_content = css_file_path.read_text(encoding='utf-8')
+    except Exception as e:
+        print(f"[!] 读取CSS文件失败: {e}")
+        css_content = "/* CSS load failed */"
+
+    js_content = ""
+    try:
+        js_content = js_file_path.read_text(encoding='utf-8')
+    except Exception as e:
+        print(f"[!] 读取JS文件失败: {e}")
+        js_content = "// JS load failed"
+    
+    # ... (rule groups logic unchanged) ...
     # 按替换规则归类
     rule_groups = {}
     for change in changes_log:
@@ -225,9 +296,9 @@ def generate_report(report_path: Path, changes_log: list, source_filename: str):
     html_content = html_content.replace('{{content_sections}}', content_sections)
     html_content = html_content.replace('{{generation_time}}', html.escape(str(__import__('datetime').datetime.now().strftime('%Y-%m-%d %H:%M:%S'))))
     
-    # 替换CSS和JS文件路径
-    html_content = html_content.replace('href="shared_assets/report_styles.css"', f'href="{css_path}"')
-    html_content = html_content.replace('src="shared_assets/report_scripts.js"', f'src="{js_path}"')
+    # 嵌入CSS和JS（替换标签）
+    html_content = html_content.replace('<link rel="stylesheet" href="shared_assets/report_styles.css">', f'<style>\n{css_content}\n</style>')
+    html_content = html_content.replace('<script src="shared_assets/report_scripts.js"></script>', f'<script>\n{js_content}\n</script>')
     
     try:
         report_path.write_text(html_content, encoding='utf-8')
@@ -354,8 +425,9 @@ def process_epub_file(file_path: Path, rules: pd.DataFrame, processed_dir: Path,
             # 如果没有修改，复制原文件作为临时文件
             shutil.copy2(file_path, temp_epub_path)
         
-        # 第二阶段：修复CSS链接
-        css_fixed = fix_css_links_in_epub(temp_epub_path, file_path)
+        # 第二阶段：修复CSS链接 (使用 css_fixer 模块)
+        fix_status, _ = css_fixer.fix_epub_css(str(temp_epub_path), str(temp_epub_path.parent))
+        css_fixed = (fix_status == "fixed")
         
         if css_fixed:
             book_is_modified = True
@@ -372,7 +444,7 @@ def process_epub_file(file_path: Path, rules: pd.DataFrame, processed_dir: Path,
             generate_report(report_path, unique_changes, file_path.name)
         
         return {'modified': book_is_modified, 'replacement_count': replacement_count, 'css_fixed': css_fixed, 'error': None}
-
+        
     except Exception as e:
         print(f"\n[!] 处理EPUB文件失败 {file_path.name}: {e}")
         # 清理临时文件
@@ -380,107 +452,6 @@ def process_epub_file(file_path: Path, rules: pd.DataFrame, processed_dir: Path,
         if temp_epub_path.exists():
             temp_epub_path.unlink()
         return {'modified': False, 'replacement_count': 0, 'css_fixed': False, 'error': str(e)}
-
-
-def fix_css_links_in_epub(epub_path, original_epub_path):
-    """修复EPUB文件中的CSS链接"""
-    
-    # 创建临时目录
-    temp_dir = epub_path.parent / f"css_fix_temp_{epub_path.stem}"
-    original_temp_dir = epub_path.parent / f"original_temp_{epub_path.stem}"
-    
-    css_was_fixed = False
-    
-    try:
-        # 解包修复后的EPUB文件
-        temp_dir.mkdir(exist_ok=True)
-        with zipfile.ZipFile(epub_path, 'r') as zip_ref:
-            zip_ref.extractall(temp_dir)
-        
-        # 解包原始EPUB文件
-        original_temp_dir.mkdir(exist_ok=True)
-        with zipfile.ZipFile(original_epub_path, 'r') as zip_ref:
-            zip_ref.extractall(original_temp_dir)
-        
-        # 查找所有HTML/XHTML文件
-        html_files = []
-        for root, dirs, files in os.walk(temp_dir):
-            for file in files:
-                if file.endswith(('.html', '.xhtml')):
-                    html_files.append(os.path.join(root, file))
-        
-        # 处理每个HTML文件
-        for html_file_path in html_files:
-            # 读取修复后的文件内容
-            with open(html_file_path, 'r', encoding='utf-8') as f:
-                fixed_content = f.read()
-            
-            # 找到对应的原始文件
-            relative_path = os.path.relpath(html_file_path, temp_dir)
-            original_file_path = original_temp_dir / relative_path
-            
-            if original_file_path.exists():
-                with open(original_file_path, 'r', encoding='utf-8') as f:
-                    original_content = f.read()
-                
-                # 检查原始文件是否有CSS链接
-                original_css_links = re.findall(r'<link[^>]*href=["\']([^"\'>]*\.css)["\'][^>]*>', original_content, re.IGNORECASE)
-                
-                if original_css_links:
-
-                    # 检查修复后的文件是否缺失CSS链接
-                    missing_links = []
-                    for css_link in original_css_links:
-                        if css_link not in fixed_content:
-                            missing_links.append(css_link)
-                    
-                    if missing_links:
-                        
-                        # 从原始文件中提取完整的head标签
-                        original_head_match = re.search(r'<head[^>]*>.*?</head>', original_content, re.DOTALL | re.IGNORECASE)
-                        if original_head_match:
-                            original_head_content = original_head_match.group(0)
-                            
-                            # 在修复后的文件中查找head标签并替换
-                            fixed_head_match = re.search(r'<head[^>]*>.*?</head>', fixed_content, re.DOTALL | re.IGNORECASE)
-                            if fixed_head_match:
-                                fixed_content = fixed_content.replace(fixed_head_match.group(0), original_head_content)
-                                css_was_fixed = True
-                            else:
-                                # 查找自闭合的head标签
-                                head_self_closing_match = re.search(r'<head\s*\/>', fixed_content, re.IGNORECASE)
-                                if head_self_closing_match:
-                                    fixed_content = fixed_content.replace(head_self_closing_match.group(0), original_head_content)
-                                    css_was_fixed = True
-                            
-                            # 保存修复后的文件
-                            if css_was_fixed:
-                                with open(html_file_path, 'w', encoding='utf-8') as f:
-                                    f.write(fixed_content)
-        
-        # 如果有CSS被修复，重新打包EPUB文件
-        if css_was_fixed:
-            # 删除原有的EPUB文件
-            epub_path.unlink()
-            
-            # 重新创建EPUB文件
-            with zipfile.ZipFile(epub_path, 'w', zipfile.ZIP_DEFLATED) as zip_ref:
-                for root, dirs, files in os.walk(temp_dir):
-                    for file in files:
-                        file_path = os.path.join(root, file)
-                        arc_name = os.path.relpath(file_path, temp_dir)
-                        zip_ref.write(file_path, arc_name)
-        
-    except Exception as e:
-        print(f"[!] CSS链接修复失败: {e}")
-    finally:
-        # 清理临时目录
-        if temp_dir.exists():
-            shutil.rmtree(temp_dir)
-        if original_temp_dir.exists():
-            shutil.rmtree(original_temp_dir)
-    
-    return css_was_fixed
 
 def load_default_path_from_settings():
     """从共享设置文件中读取默认工作目录。"""
@@ -500,25 +471,42 @@ def load_default_path_from_settings():
 
 def main():
     """主函数"""
-    # 动态加载默认路径
-    default_path = load_default_path_from_settings()
-    
-    prompt_message = (
-        f"请输入包含源文件和规则文件的文件夹路径。\n"
-        f"(直接按 Enter 键，将使用默认路径 '{default_path}') : "
-    )
-    user_input = input(prompt_message)
+    import argparse
+    parser = argparse.ArgumentParser(description="Batch Replacer Tool")
+    parser.add_argument("--input", "-i", help="Directory containing files and rules.txt")
+    args = parser.parse_args()
 
-    if not user_input.strip():
-        directory_path = default_path
-        print(f"[*] 未输入路径，已使用默认路径: {directory_path}")
+    # --- 1. 获取目标目录 ---
+    directory_path = None
+    if args.input:
+        directory_path = args.input
     else:
-        directory_path = user_input.strip()
+        # 动态加载默认路径
+        default_path = load_default_path_from_settings()
+        
+        try:
+            prompt_message = (
+                f"请输入包含源文件和规则文件的文件夹路径。\n"
+                f"(直接按 Enter 键，将使用默认路径 '{default_path}') : "
+            )
+            user_input = input(prompt_message)
+            if not user_input.strip():
+                directory_path = default_path
+                print(f"[*] 未输入路径，已使用默认路径: {directory_path}")
+            else:
+                directory_path = user_input.strip()
+        except EOFError:
+             directory_path = default_path
+
+    if not directory_path:
+        # Should not happen given logic above, but safety check
+        print("[!] 错误: 未能确定有效的工作目录。")
+        sys.exit(1)
 
     base_dir = Path(directory_path)
     if not base_dir.is_dir():
         print(f"[!] 错误: 文件夹 '{base_dir}' 不存在。")
-        return
+        sys.exit(1)
 
     processed_dir = base_dir / PROCESSED_DIR_NAME
     report_dir = base_dir / REPORT_DIR_NAME

@@ -1,8 +1,10 @@
 {
-    "default_work_dir": "/Users/doudouda/Downloads/2/",
-    "ai_config": {
-        "api_key": "YOUR_API_KEY",
-        "base_url": "YOUR_API_BASE_URL",
-        "model_name": "YOUR_MODEL_NAME"
-    }
+  "default_work_dir": "E:\\Test",
+  "ai_api_key": null,
+  "ai_base_url": null,
+  "ai_model_name": null,
+  "recent_tasks": [],
+  "favorite_paths": [],
+  "language": "zh-CN",
+  "auto_scroll_console": true
 }

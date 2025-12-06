@@ -4,12 +4,17 @@ import time
 import json
 import shutil
 import traceback
+
+# Add the diritto directory to sys.path to find browser_launcher
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__))))
+
 from selenium import webdriver
 from selenium.common.exceptions import TimeoutException
 from selenium.webdriver.common.by import By
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
+from browser_launcher import setup_driver_with_auto_launch
 
 # --- 脚本核心代码 ---
 
@@ -48,21 +53,8 @@ def load_default_download_path():
 
 
 def setup_driver():
-    """配置并连接到已经打开的 Chrome 浏览器实例"""
-    print("正在尝试连接到已启动的 Chrome 浏览器...")
-    print("请确保您已按照说明使用 --remote-debugging-port=9222 启动了 Chrome。")
-    options = Options()
-    options.add_experimental_option("debuggerAddress", "127.0.0.1:9222")
-    try:
-        driver = webdriver.Chrome(options=options)
-        print("✅ 成功连接到浏览器！")
-        return driver
-    except Exception as e:
-        print(f"❌ 连接浏览器失败: {e}")
-        print("请确认：")
-        print("1. Chrome 浏览器是否已通过命令行启动，并带有 '--remote-debugging-port=9222' 参数？")
-        print("2. 是否没有其他 Chrome 窗口（请完全退出 Chrome 后再按指令启动）？")
-        return None
+    """配置并连接到 Chrome 浏览器（自动启动）"""
+    return setup_driver_with_auto_launch()
 
 def process_book(driver, start_url, download_path):
     """
@@ -222,10 +214,15 @@ def process_book(driver, start_url, download_path):
             except ValueError:
                 print(f"⚠️ 警告: 您输入的章节URL {start_url} 未在最终的目录列表中找到。将从第一章开始处理。")
         
-        # 创建以小说名命名的主目录
+        # 创建以小说名命名的主目录及子目录结构
         book_dir = os.path.join(download_path, novel_title)
-        os.makedirs(book_dir, exist_ok=True)
+        chapters_subdir = os.path.join(book_dir, "分卷")
+        complete_txt_dir = os.path.join(book_dir, "完整txt")
+        os.makedirs(chapters_subdir, exist_ok=True)
+        os.makedirs(complete_txt_dir, exist_ok=True)
         print(f"所有文件将保存在: {book_dir}")
+        print(f"  - 分卷目录: {chapters_subdir}")
+        print(f"  - 完整txt目录: {complete_txt_dir}")
         
         # 6. 循环下载每个章节，并加入重试逻辑
         for i, url in enumerate(full_url_list[start_index:], start=start_index):
@@ -234,16 +231,13 @@ def process_book(driver, start_url, download_path):
             
             chapter_prefix = f"{str(chapter_number).zfill(4)}_"
             
-            # 在新的 book_dir 中检查文件
-            # 检查主目录和 chapters 子目录中是否已存在
-            chapters_subdir = os.path.join(book_dir, "chapters")
-            existing_in_main = [f for f in os.listdir(book_dir) if f.startswith(chapter_prefix) and os.path.isfile(os.path.join(book_dir, f))]
-            existing_in_sub = []
+            # 检查分卷目录中是否已存在此章节
+            existing_files = []
             if os.path.exists(chapters_subdir):
-                existing_in_sub = [f for f in os.listdir(chapters_subdir) if f.startswith(chapter_prefix)]
+                existing_files = [f for f in os.listdir(chapters_subdir) if f.startswith(chapter_prefix)]
 
-            if existing_in_main or existing_in_sub:
-                existing_file_name = (existing_in_main + existing_in_sub)[0]
+            if existing_files:
+                existing_file_name = existing_files[0]
                 print(f"✅ 检测到文件 '{existing_file_name}'，本章已下载，将跳过。")
                 stats['skipped'] += 1
                 continue
@@ -261,13 +255,15 @@ def process_book(driver, start_url, download_path):
                         
                     driver.get(url)
 
-                    # 尝试多个可能的章节标题选择器
+                    # 尝试多个可能的章节标题选择器 (优先使用Diritto的ProseMirror结构)
                     chapter_title_selectors = [
-                        'span[class*="e14fx9ai3"]',  # 原始选择器
-                        'h1[class*="title"]',        # 备用选择器1
-                        'h1',                        # 通用h1选择器
-                        'h2',                        # 备用h2选择器
-                        '[class*="title"]'           # 任何包含title的class
+                        'span.css-p50amq.e14fx9ai3',  # Diritto章节标题的确切选择器
+                        'span[class*="e14fx9ai3"]',   # 原始选择器
+                        '.e14fx9ai0 span',            # 标题容器内的span
+                        'h1[class*="title"]',         # 备用选择器1
+                        'h1',                         # 通用h1选择器
+                        'h2',                         # 备用h2选择器
+                        '[class*="title"]'            # 任何包含title的class
                     ]
                     
                     chapter_title = None
@@ -284,12 +280,14 @@ def process_book(driver, start_url, download_path):
                         chapter_title = f"第{chapter_number}章"
                         print(f"  ⚠️ 无法获取章节标题，使用默认: {chapter_title}")
                     
-                    # 尝试多个可能的内容选择器
+                    # 尝试多个可能的内容选择器 (优先使用Diritto的ProseMirror结构)
                     content_selectors = [
+                        'div.tiptap.ProseMirror',    # Diritto内容的确切选择器
                         '.tiptap.ProseMirror',       # 原始选择器
+                        '.ProseMirror',              # ProseMirror编辑器
+                        '.e1rxxh2l2 .ProseMirror',    # 内容容器内的ProseMirror
                         '.content',                  # 通用内容选择器
                         '[class*="content"]',        # 任何包含content的class
-                        '.ProseMirror',              # ProseMirror编辑器
                         '[class*="text"]',           # 任何包含text的class
                         'article'                    # article标签
                     ]
@@ -311,13 +309,13 @@ def process_book(driver, start_url, download_path):
 
                     sanitized_title = chapter_title.replace('/', '_').replace('\\', '_').replace(':', '：')
                     file_name = f"{chapter_prefix}{sanitized_title}.txt"
-                    file_path = os.path.join(book_dir, file_name)
+                    file_path = os.path.join(chapters_subdir, file_name)
                     
                     with open(file_path, 'w', encoding='utf-8') as f:
                         f.write(f"{chapter_title}\n\n")
                         f.write(content)
                     
-                    print(f"  ✅ 已保存: {file_name}")
+                    print(f"  ✅ 已保存至分卷目录: {file_name}")
                     stats['successful'] += 1
                     download_successful = True
 
@@ -353,17 +351,20 @@ def process_book(driver, start_url, download_path):
         return None, None, stats
 
 def merge_chapters(novel_title, book_dir):
-    """将文件夹中所有TXT文件按顺序合并，然后将分卷移动到子目录。小于3KB的文件将被跳过合并。"""
-    merged_filename = os.path.join(book_dir, f"{novel_title}.txt")
+    """将分卷目录中所有TXT文件按顺序合并，保存到完整txt目录。小于3KB的文件将被跳过合并。"""
+    chapters_subdir = os.path.join(book_dir, "分卷")
+    complete_txt_dir = os.path.join(book_dir, "完整txt")
+    merged_filename = os.path.join(complete_txt_dir, f"{novel_title}_完整.txt")
+    
     print(f"\n🔄 开始合并所有章节到一个文件: {merged_filename}")
     
     try:
-        if not os.path.exists(book_dir):
-            print(f"⚠️ 警告: 目录 {book_dir} 不存在，无法合并。")
+        if not os.path.exists(chapters_subdir):
+            print(f"⚠️ 警告: 目录 {chapters_subdir} 不存在，无法合并。")
             return
         
-        # 获取所有原始的 txt 文件
-        all_txt_files = sorted([f for f in os.listdir(book_dir) if f.endswith('.txt') and os.path.isfile(os.path.join(book_dir, f))])
+        # 获取分卷目录中所有的 txt 文件
+        all_txt_files = sorted([f for f in os.listdir(chapters_subdir) if f.endswith('.txt') and os.path.isfile(os.path.join(chapters_subdir, f))])
 
         if not all_txt_files:
             print("⚠️ 警告: 未找到可供合并的章节文件。")
@@ -372,7 +373,7 @@ def merge_chapters(novel_title, book_dir):
         # 筛选出大于等于3KB的文件用于合并
         files_to_merge = []
         for filename in all_txt_files:
-            file_path = os.path.join(book_dir, filename)
+            file_path = os.path.join(chapters_subdir, filename)
             # 修改：将判断条件从 800 字节改为 3 KB (3 * 1024 bytes)
             if os.path.getsize(file_path) < 3 * 1024:
                 print(f"  - [跳过合并] 文件 '{filename}' 小于 3 KB，视为非正文内容。")
@@ -382,9 +383,12 @@ def merge_chapters(novel_title, book_dir):
         if not files_to_merge:
             print("⚠️ 警告: 筛选后没有符合大小要求的章节文件可供合并。")
         else:
+            # 确保完整txt目录存在
+            os.makedirs(complete_txt_dir, exist_ok=True)
+            
             with open(merged_filename, 'w', encoding='utf-8') as outfile:
                 for i, filename in enumerate(files_to_merge):
-                    file_path = os.path.join(book_dir, filename)
+                    file_path = os.path.join(chapters_subdir, filename)
                     with open(file_path, 'r', encoding='utf-8') as infile:
                         outfile.write(infile.read())
                     
@@ -392,21 +396,10 @@ def merge_chapters(novel_title, book_dir):
                         outfile.write("\n\n\n==========\n\n\n")
             
             print(f"✅ 合并完成！小说已保存至: {os.path.abspath(merged_filename)}")
-        
-        # 将所有原始的 txt 文件移动到 chapters 子目录
-        chapters_subdir = os.path.join(book_dir, "chapters")
-        os.makedirs(chapters_subdir, exist_ok=True)
-        
-        for filename in all_txt_files:
-            src_path = os.path.join(book_dir, filename)
-            dest_path = os.path.join(chapters_subdir, filename)
-            if os.path.exists(src_path) and src_path != merged_filename:
-                shutil.move(src_path, dest_path)
-
-        print(f"📂 章节分卷文件已移动到子目录: {os.path.abspath(chapters_subdir)}")
+            print(f"📂 章节分卷文件保留在: {os.path.abspath(chapters_subdir)}")
         
     except Exception as e:
-        print(f"❌ 合并或移动文件时发生错误: {e}")
+        print(f"❌ 合并文件时发生错误: {e}")
 
 def print_book_report(stats, novel_title):
     """打印单本书籍的执行报告"""
@@ -460,20 +453,39 @@ if __name__ == "__main__":
     default_download_path = load_default_download_path()
     print(f"[信息] 当前下载路径设置为: {default_download_path}")
     
-    print("\n请输入一个或多个Diritto小说URL (可分多行粘贴, 输入完成后按两次回车结束):")
-    lines = []
-    while True:
-        try:
-            line = input()
-            if not line:
+    # Check for command line arguments first
+    if len(sys.argv) > 1:
+        # Check for --urls flag
+        if '--urls' in sys.argv:
+            urls_idx = sys.argv.index('--urls') + 1
+            if urls_idx < len(sys.argv):
+                urls_arg = sys.argv[urls_idx]
+                # Try JSON first, fallback to comma-separated
+                try:
+                    url_list = json.loads(urls_arg)
+                except:
+                    url_list = [u.strip() for u in urls_arg.split(',') if u.strip()]
+            else:
+                print("❌ 错误: --urls 参数缺少值")
+                sys.exit(1)
+        else:
+            # Existing behavior: all args are URLs
+            urls_input = " ".join(sys.argv[1:])
+            url_list = [url for url in urls_input.split() if url.startswith("http")]
+    else:
+        print("\n请输入一个或多个Diritto小说URL (可分多行粘贴, 输入完成后按两次回车结束):")
+        lines = []
+        while True:
+            try:
+                line = input()
+                if not line:
+                    break
+                lines.append(line)
+            except EOFError:
                 break
-            lines.append(line)
-        except EOFError:
-            break
+        urls_input = " ".join(lines)
+        url_list = [url for url in urls_input.split() if url.startswith("http")]
     
-    urls_input = " ".join(lines)
-    url_list = [url for url in urls_input.split() if url.startswith("http")]
-
     if not url_list:
         print("❌ 错误: 未输入有效的URL。")
     else:

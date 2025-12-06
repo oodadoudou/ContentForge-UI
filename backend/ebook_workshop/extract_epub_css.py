@@ -34,10 +34,14 @@ def extract_css_from_epubs(base_dir):
 
                         print(f"  -> 发现 {len(css_files_in_zip)} 个 CSS 文件，准备提取...")
 
+                        # Output to processed_files
+                        output_dir = os.path.join(root, "processed_files")
+                        os.makedirs(output_dir, exist_ok=True)
+
                         for css_file_path in css_files_in_zip:
-                            zf.extract(css_file_path, path=root)
+                            zf.extract(css_file_path, path=output_dir)
                             extracted_filename = os.path.basename(css_file_path)
-                            print(f"    - 已提取 '{extracted_filename}' 到 '{root}'")
+                            print(f"    - 已提取 '{extracted_filename}' 到 '{output_dir}'")
 
                 except zipfile.BadZipFile:
                     print(f"  [!] 警告: 无法打开 '{filename}'。文件可能已损坏或不是有效的 EPUB/ZIP 文件。")
@@ -58,12 +62,29 @@ def load_default_path_from_settings():
     except Exception:
         return os.path.join(os.path.expanduser("~"), "Downloads")
 
+import argparse
+
 if __name__ == "__main__":
-    default_path = load_default_path_from_settings()
+    parser = argparse.ArgumentParser(description="Extract CSS from EPUB files.")
+    parser.add_argument("--input", "-i", type=str, help="Directory containing EPUB files")
     
-    prompt_message = f"请输入目标目录路径 (直接按回车将使用默认路径: {default_path}): "
-    user_input = input(prompt_message)
+    args = parser.parse_args()
     
-    target_directory = user_input.strip() if user_input.strip() else default_path
+    target_directory = None
     
+    if args.input:
+        target_directory = args.input
+    else:
+        default_path = load_default_path_from_settings()
+        prompt_message = f"请输入目标目录路径 (直接按回车将使用默认路径: {default_path}): "
+        try:
+            user_input = input(prompt_message)
+            target_directory = user_input.strip() if user_input.strip() else default_path
+        except EOFError:
+            pass
+            
+    if not target_directory:
+        print("[!] 错误: 未提供输入目录。")
+        sys.exit(1)
+        
     extract_css_from_epubs(target_directory)

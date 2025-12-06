@@ -184,14 +184,34 @@ def load_default_path_from_settings():
 
 def main():
     """脚本主入口"""
-    # --- 修改：动态加载默认路径 ---
-    default_path = load_default_path_from_settings()
-    prompt_message = f"请输入需要修复封面的EPUB文件所在目录 (直接按回车将使用: {default_path}): "
-    target_directory = input(prompt_message).strip() or default_path
+    import argparse
+    
+    parser = argparse.ArgumentParser(description="Cover Repair Tool")
+    parser.add_argument("--input", "-i", help="Input directory containing EPUB files")
+    args = parser.parse_args()
 
-    if not os.path.isdir(target_directory):
-        print(f"错误: 目录 '{target_directory}' 不存在或无效。", file=sys.stderr)
-        sys.exit(1)
+    # --- 1. 获取目标目录 ---
+    target_directory = None
+    if args.input:
+        target_directory = args.input
+    else:
+        # --- 动态加载默认路径 ---
+        default_path = load_default_path_from_settings()
+        # 仅在未提供命令行参数时尝试交互式输入 (兼容手动运行)
+        try:
+             prompt_message = f"请输入需要修复封面的EPUB文件所在目录 (直接按回车将使用: {default_path}): "
+             user_input = input(prompt_message).strip()
+             target_directory = user_input if user_input else default_path
+        except EOFError:
+             # 如果是非交互式环境且未提供参数，则使用默认路径
+             target_directory = default_path
+
+    # --- 2. 验证路径 ---
+    if not target_directory or not os.path.isdir(target_directory):
+        print(f"[{'错误' if args.input else '提示'}] 目录 '{target_directory}' 不存在或无效。", file=sys.stderr)
+        if args.input:
+            sys.exit(1)
+        return
         
     output_dir = os.path.join(target_directory, "processed_files")
     os.makedirs(output_dir, exist_ok=True)

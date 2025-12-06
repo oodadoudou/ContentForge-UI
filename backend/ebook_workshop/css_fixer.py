@@ -85,6 +85,11 @@ def fix_epub_css(epub_path, output_dir):
         if modified:
             fixed_epub_path = os.path.join(output_dir, os.path.basename(epub_path))
             shutil.make_archive(fixed_epub_path.replace('.epub', ''), 'zip', temp_dir)
+            
+            # Windows: os.rename fails if destination exists
+            if os.path.exists(fixed_epub_path):
+                os.remove(fixed_epub_path)
+                
             os.rename(fixed_epub_path.replace('.epub', '.zip'), fixed_epub_path)
             return "fixed", None
         else:

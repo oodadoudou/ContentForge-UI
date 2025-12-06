@@ -62,13 +62,22 @@ def main():
     """
     主函數，獲取使用者輸入並處理單一檔案或整個目錄。
     """
-    # --- 修改：动态加载默认路径 ---
-    default_path = load_default_path_from_settings()
-    user_path = input(f"請輸入要處理的 txt 文件或目錄路徑 (直接回車將使用預設路徑: {default_path}): ").strip()
-    
-    if not user_path:
-        user_path = default_path
-        print(f"未輸入路徑，將使用預設路徑: {user_path}")
+    import argparse
+    parser = argparse.ArgumentParser(description="TXT Reformat Tool")
+    parser.add_argument("--input", "-i", type=str, help="Input directory or file path")
+    args = parser.parse_args()
+
+    user_path = None
+    if args.input:
+        user_path = args.input
+    else:
+        # --- 修改：动态加载默认路径 ---
+        default_path = load_default_path_from_settings()
+        user_path = input(f"請輸入要處理的 txt 文件或目錄路徑 (直接回車將使用預設路徑: {default_path}): ").strip()
+        
+        if not user_path:
+            user_path = default_path
+            print(f"未輸入路徑，將使用預設路徑: {user_path}")
 
     # 檢查路徑是否存在
     if not os.path.exists(user_path):

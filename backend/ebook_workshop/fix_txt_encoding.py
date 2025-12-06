@@ -63,12 +63,19 @@ def main():
     """
     脚本主函数，负责处理用户输入和文件遍历。
     """
-    # --- 修改：动态加载默认路径 ---
-    default_path = load_default_path_from_settings()
-    
-    # 提示用户输入，并显示默认值
-    prompt_message = f"请输入需要处理的 TXT 文件所在目录 (直接按回车将使用: {default_path}): "
-    target_directory = input(prompt_message).strip() or default_path
+    import argparse
+    parser = argparse.ArgumentParser(description="TXT Encoding Fixer")
+    parser.add_argument("--input", "-i", type=str, help="Directory containing TXT files")
+    args = parser.parse_args()
+
+    target_directory = None
+    if args.input:
+        target_directory = args.input
+    else:
+        # --- 修改：动态加载默认路径 ---
+        default_path = load_default_path_from_settings()
+        prompt_message = f"请输入需要处理的 TXT 文件所在目录 (直接按回车将使用: {default_path}): "
+        target_directory = input(prompt_message).strip() or default_path
 
     # 检查输入路径是否有效
     if not os.path.isdir(target_directory):
@@ -90,7 +97,7 @@ def main():
 
         for filename in files:
             # 只处理 .txt 文件
-            if filename.endswith('.txt'):
+            if filename.lower().endswith('.txt'):
                 file_path = os.path.join(root, filename)
                 output_path = os.path.join(output_dir, filename)
                 

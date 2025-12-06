@@ -168,42 +168,46 @@ def normalize_filenames(pdf_dir):
             except OSError as e:
                 print(f"    ❌ 错误: 重命名 '{filename}' 失败: {e}")
                 
-    if renamed_count > 0:
-        print(f"    ✨ 共规范化了 {renamed_count} 个文件名。")
-    else:
-        print("    所有文件名已符合规范，无需更改。")
-
-
-def run_conversion_process(root_dir):
+def run_conversion_process(root_input_dir):
     """
-    执行从查找文件夹到生成PDF再到移动和重命名的完整流程。
+    运行整个批量转换流程。
     """
-    # 根据根目录名称创建唯一的PDF输出文件夹
-    root_dir_basename = os.path.basename(os.path.abspath(root_dir))
-    overall_pdf_output_dir = os.path.join(root_dir, f"{root_dir_basename}_pdfs")
-    os.makedirs(overall_pdf_output_dir, exist_ok=True)
+    # 1. 扫描文件夹
+    # 排除输出目录，避免递归扫描
+    excluded_dirs = ["processed_dir", SUCCESS_MOVE_SUBDIR_NAME]
+    sorted_image_folders = find_image_folders(root_input_dir, excluded_dirs)
     
-    # 创建用于存放成功处理项目的文件夹
-    success_move_target_dir = os.path.join(root_dir, SUCCESS_MOVE_SUBDIR_NAME)
-    os.makedirs(success_move_target_dir, exist_ok=True)
-
-    # 查找需要处理的文件夹，同时排除管理目录
-    folders_to_process = find_image_folders(root_dir, [overall_pdf_output_dir, success_move_target_dir])
-
-    if not folders_to_process:
-        print("\n在指定目录及其子目录中未找到任何包含图片的文件夹。脚本执行结束。")
+    total_folders = len(sorted_image_folders)
+    if total_folders == 0:
+        print("\n没有找到需要处理的图片文件夹。结束。")
         return
 
-    print("\n--- 步骤 2: 开始将图片文件夹批量转换为 PDF ---")
-    
-    total_folders = len(folders_to_process)
-    failed_tasks = []
-    success_count = 0
+    # 2. 准备输出目录
+    overall_pdf_output_dir = os.path.join(root_input_dir, "processed_dir")
+    if not os.path.exists(overall_pdf_output_dir):
+        os.makedirs(overall_pdf_output_dir)
+        print(f"\n--- 步骤 2: 创建 PDF 输出总目录: {overall_pdf_output_dir} ---")
+    else:
+        print(f"\n--- 步骤 2: PDF 输出总目录已存在: {overall_pdf_output_dir} ---")
 
-    for i, image_dir_path in enumerate(folders_to_process):
+    success_move_target_dir = os.path.join(root_input_dir, SUCCESS_MOVE_SUBDIR_NAME)
+    if not os.path.exists(success_move_target_dir):
+        os.makedirs(success_move_target_dir)
+
+    success_count = 0
+    failed_tasks = []
+
+    # 3. 开始循环处理
+    print(f"\n--- 步骤 3: 开始批量处理 {total_folders} 个文件夹 ---")
+    
+    for i, image_dir_path in enumerate(sorted_image_folders):
         folder_name = os.path.basename(image_dir_path)
         print(f"\n--- ({i+1}/{total_folders}) 正在处理: {folder_name} ---")
 
+        # 3.1 规范化文件名
+        normalize_filenames(image_dir_path)
+
+        # 3.2 读取图片列表
         try:
             image_filenames = [f for f in os.listdir(image_dir_path)
                                if f.lower().endswith(IMAGE_EXTENSIONS_FOR_MERGE) and not f.startswith('.')]
@@ -216,6 +220,7 @@ def run_conversion_process(root_dir):
             print("    文件夹内未找到符合条件的图片，已跳过。")
             continue
 
+        # 3.3 生成PDF
         sorted_image_paths = [os.path.join(image_dir_path, f) for f in natsort.natsorted(image_filenames)]
         output_pdf_filename = f"{folder_name}.pdf"
         output_pdf_filepath = os.path.join(overall_pdf_output_dir, output_pdf_filename)
@@ -225,6 +230,7 @@ def run_conversion_process(root_dir):
             PDF_TARGET_PAGE_WIDTH_PIXELS, PDF_DPI
         )
         
+        # 3.4 处理结果
         if result_path:
             success_count += 1
             # 移动已成功处理的文件夹
@@ -234,7 +240,18 @@ def run_conversion_process(root_dir):
                 if os.path.basename(image_dir_path) == os.path.basename(success_move_target_dir):
                     print(f"      -> 跳过移动，源与目标文件夹同名。")
                 else:
-                    shutil.move(image_dir_path, success_move_target_dir)
+                    target_move_path = os.path.join(success_move_target_dir, folder_name)
+                    # 如果目标已存在，先移除（或者可以改为重命名，这里选择覆盖/合并的逻辑需谨慎，简单起见如果存在则报错或覆盖）
+                    # shutil.move 如果目标是已存在目录，会移动到该目录内部，所以最好确保目标路径不存在
+                    if os.path.exists(target_move_path):
+                        print(f"      警告: 目标位置已存在同名文件夹 '{folder_name}'，将尝试覆盖或合并。")
+                        # shutil.move 在这种情况下比较复杂，简单策略: 
+                        # 这里我们假设用户已经处理过，或者手动清理。
+                        # 为安全起见，我们加个后缀
+                        import time
+                        target_move_path += f"_{int(time.time())}"
+                    
+                    shutil.move(image_dir_path, target_move_path)
                     print(f"      -> 已移至 '{SUCCESS_MOVE_SUBDIR_NAME}' 文件夹。")
             except Exception as e:
                 print(f"      ❌ 错误: 移动文件夹失败: {e}")
@@ -244,8 +261,7 @@ def run_conversion_process(root_dir):
         else:
             failed_tasks.append(folder_name)
 
-    normalize_filenames(overall_pdf_output_dir)
-
+    # 4. 总结
     print("\n" + "=" * 70)
     print("【任务总结报告】")
     print("-" * 70)
@@ -264,38 +280,62 @@ def run_conversion_process(root_dir):
 
 
 if __name__ == "__main__":
+    import argparse
+    
     print("=" * 70)
     print("=== 批量图片文件夹转PDF脚本 (V2 - 支持成功后移动) ===")
     print("=" * 70)
     
+    parser = argparse.ArgumentParser(description="图片转PDF工具")
+    parser.add_argument("--input", help="输入根目录路径")
+    parser.add_argument("--output", help="输出根目录路径 (可选)")
+    args = parser.parse_args()
+
     root_input_dir = ""
+    default_root_dir_name = ""
+
     # 尝试从共享设置加载默认路径
     try:
         sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-        from shared_utils import utils
-        settings = utils.load_settings()
-        default_root_dir_name = settings.get("default_work_dir", "")
+        # 尝试导入，可能需要根据实际路径结构调整
+        try:
+             from shared_utils import utils
+             settings = utils.load_settings()
+             default_root_dir_name = settings.get("default_work_dir", "")
+        except ImportError:
+             pass # 忽略导入错误
     except (ImportError, FileNotFoundError):
-        default_root_dir_name = os.path.join(os.path.expanduser("~"), "Downloads")
+        pass
 
-    while True:
-        prompt_message = (
-            f"请输入包含多个图片子文件夹的【根目录】路径。\n"
-            f"(直接按 Enter 键将使用默认路径: '{default_root_dir_name}'): "
-        )
-        user_provided_path = input(prompt_message).strip()
-        
-        current_path_to_check = user_provided_path if user_provided_path else default_root_dir_name
-        if not user_provided_path:
-            print(f"\n使用默认路径: {current_path_to_check}")
-
-        abs_path_to_check = os.path.abspath(current_path_to_check)
-        if os.path.isdir(abs_path_to_check):
-            root_input_dir = abs_path_to_check
-            print(f"已确认根处理目录: {root_input_dir}")
-            break
+    if not default_root_dir_name:
+         default_root_dir_name = os.path.join(os.path.expanduser("~"), "Downloads")
+    
+    if args.input:
+        if os.path.isdir(args.input):
+            root_input_dir = os.path.abspath(args.input)
+            print(f"[*] 使用命令行提供的目录: {root_input_dir}")
         else:
-            print(f"\n错误：路径 '{abs_path_to_check}' 不是一个有效的目录或不存在。请重试。\n")
+            print(f"错误: 命令行提供的路径 '{args.input}' 无效。")
+            sys.exit(1)
+    else:
+        while True:
+            prompt_message = (
+                f"请输入包含多个图片子文件夹的【根目录】路径。\n"
+                f"(直接按 Enter 键将使用默认路径: '{default_root_dir_name}'): "
+            )
+            user_provided_path = input(prompt_message).strip()
+            
+            current_path_to_check = user_provided_path if user_provided_path else default_root_dir_name
+            if not user_provided_path:
+                print(f"\n使用默认路径: {current_path_to_check}")
+
+            abs_path_to_check = os.path.abspath(current_path_to_check)
+            if os.path.isdir(abs_path_to_check):
+                root_input_dir = abs_path_to_check
+                print(f"已确认根处理目录: {root_input_dir}")
+                break
+            else:
+                print(f"\n错误：路径 '{abs_path_to_check}' 不是一个有效的目录或不存在。请重试。\n")
     
     try:
         run_conversion_process(root_input_dir)

@@ -52,41 +52,37 @@ def merge_pdfs_in_directory(root_dir: str):
                     logging.info(f"  [找到文件] {os.path.relpath(pdf_path, subfolder_path)}")
 
         pdf_files_to_merge = natsort.natsorted(pdf_files_to_merge)
-
         if not pdf_files_to_merge:
-            logging.warning(f"在 '{subfolder_name}' 中没有找到任何PDF文件, 跳过。")
-            print(f"  🟡 在 '{subfolder_name}' 中未发现PDF, 跳过。\n")
+            logging.info("  [提示] 此文件夹中未找到PDF文件,跳过。")
             continue
 
-        print(f"  - 在 '{subfolder_name}' 中总共找到 {len(pdf_files_to_merge)} 个PDF文件, 准备合并。")
-
-        output_pdf_path = os.path.join(output_dir, f"{subfolder_name}.pdf")
-        new_pdf = pikepdf.Pdf.new()
+        output_pdf_name = f"{subfolder_name}.pdf"
+        output_pdf_path = os.path.join(output_dir, output_pdf_name)
+        logging.info(f"  [准备合并] 将合并 {len(pdf_files_to_merge)} 个文件 -> {output_pdf_name}")
 
         try:
-            for i, pdf_path in enumerate(pdf_files_to_merge):
+            pdf = pikepdf.Pdf.new()
+            for file_path in pdf_files_to_merge:
                 try:
-                    with pikepdf.open(pdf_path) as src_pdf:
-                        new_pdf.pages.extend(src_pdf.pages)
-                        print(f"    ({i+1}/{len(pdf_files_to_merge)}) 已添加: {os.path.basename(pdf_path)}")
+                    src_pdf = pikepdf.Pdf.open(file_path)
+                    pdf.pages.extend(src_pdf.pages)
                 except Exception as e:
-                    logging.error(f"    合并文件 '{os.path.basename(pdf_path)}' 时出错: {e}")
-
-            if len(new_pdf.pages) > 0:
-                new_pdf.save(output_pdf_path)
-                print(f"  ✅ 成功! 合并后的文件保存在: '{output_pdf_path}'\n")
-            else:
-                logging.warning(f"'{subfolder_name}' 的合并结果为空, 未生成PDF文件。")
+                    logging.error(f"    [错误] 无法读取文件 '{file_path}': {e}")
+            
+            pdf.save(output_pdf_path)
+            logging.info(f"  [完成] 成功保存: {output_pdf_path}")
         except Exception as e:
-            logging.error(f"保存合并后的PDF '{output_pdf_path}' 时发生严重错误: {e}")
-        finally:
-             pass
+            logging.error(f"  [失败] 合并过程出错: {e}")
 
-# ▼▼▼ 主函数已按新标准修改 ▼▼▼
 def main():
-    """
-    主执行函数
-    """
+    import argparse
+    import sys
+
+    parser = argparse.ArgumentParser(description="PDF 合并工具")
+    parser.add_argument("--input", help="输入根目录路径")
+    parser.add_argument("--output", help="输出文件路径 (未使用，仅兼容接口)")
+    args = parser.parse_args()
+
     print("\n--- PDF 合并工具 ---")
     print("本工具将自动查找每个子文件夹(及其所有后代目录)中的PDF文件,")
     print("并将它们合并成一个以该子文件夹命名的PDF文件。")
@@ -104,33 +100,47 @@ def main():
             default_dir = settings.get("default_work_dir")
             return default_dir if default_dir else "."
         except (FileNotFoundError, json.JSONDecodeError, KeyError) as e:
-            print(f"警告：读取 settings.json 失败 ({e})，将使用内建备用路径。")
+            # 仅在交互模式下打印警告，避免污染日志
+            if not args.input:
+                print(f"警告：读取 settings.json 失败 ({e})，将使用内建备用路径。")
             # 在无法读取设定档时，提供一个通用的备用路径
             return os.path.join(os.path.expanduser("~"), "Downloads")
     # --- 新增结束 ---
 
-    default_root_dir_name = load_default_path_from_settings()
+    root_dir = ""
 
-    # --- 标准化的路径处理逻辑 ---
-    while True:
-        prompt_message = (
-            f"\n- 请输入目标根文件夹的路径。\n"
-            f"  (直接按 Enter 将使用默认路径: '{default_root_dir_name}'): "
-        )
-        user_input = input(prompt_message).strip()
-
-        # 如果用户未输入内容，则使用默认路径，否则使用用户输入的路径
-        root_dir_to_check = user_input if user_input else default_root_dir_name
-        
-        abs_path_to_check = os.path.abspath(root_dir_to_check)
-
-        if os.path.isdir(abs_path_to_check):
-            root_dir = abs_path_to_check
-            print(f"\n[*] 将要处理的目录是: {root_dir}")
-            break
+    # 1. 优先使用命令行参数
+    if args.input:
+        if os.path.isdir(args.input):
+            root_dir = os.path.abspath(args.input)
+            print(f"[*] 使用命令行提供的目录: {root_dir}")
         else:
-            print(f"错误：路径 '{abs_path_to_check}' 不是一个有效的目录或不存在。")
-    # --------------------------
+            print(f"错误: 命令行提供的路径 '{args.input}' 无效。")
+            sys.exit(1)
+    else:
+        # 2. 交互式回退
+        default_root_dir_name = load_default_path_from_settings()
+
+        # --- 标准化的路径处理逻辑 ---
+        while True:
+            prompt_message = (
+                f"\n- 请输入目标根文件夹的路径。\n"
+                f"  (直接按 Enter 将使用默认路径: '{default_root_dir_name}'): "
+            )
+            user_input = input(prompt_message).strip()
+
+            # 如果用户未输入内容，则使用默认路径，否则使用用户输入的路径
+            root_dir_to_check = user_input if user_input else default_root_dir_name
+            
+            abs_path_to_check = os.path.abspath(root_dir_to_check)
+
+            if os.path.isdir(abs_path_to_check):
+                root_dir = abs_path_to_check
+                print(f"\n[*] 将要处理的目录是: {root_dir}")
+                break
+            else:
+                print(f"错误：路径 '{abs_path_to_check}' 不是一个有效的目录或不存在。")
+        # --------------------------
 
     print(f"\n--- 开始处理, 根目录: {root_dir} ---")
     merge_pdfs_in_directory(root_dir)

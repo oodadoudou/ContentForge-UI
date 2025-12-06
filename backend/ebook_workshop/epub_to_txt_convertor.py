@@ -58,6 +58,8 @@ def convert_epub_to_txt(epub_path, output_txt_path):
         print(f"\n[!] 处理文件 '{os.path.basename(epub_path)}' 时发生错误: {e}")
         return False
 
+import argparse
+
 # --- 新增：函数用于从 settings.json 加载默认路径 ---
 def load_default_path_from_settings():
     """从共享设置文件中读取默认工作目录。"""
@@ -76,15 +78,33 @@ def main():
     主函数，处理用户输入、目录扫描和文件转换流程。
     """
     print("--- EPUB to TXT 转换工具 ---")
-
-    # --- 修改：动态加载默认路径 ---
-    default_dir = load_default_path_from_settings()
     
-    # 获取用户输入，如果用户直接按回车，则使用默认路径
-    input_dir = input(f"请输入包含 EPUB 文件的目录 (默认为: {default_dir}): ").strip()
+    parser = argparse.ArgumentParser(description="Convert EPUB files to TXT.")
+    parser.add_argument("--input", "-i", type=str, help="Directory containing EPUB files")
+    parser.add_argument("--output", "-o", type=str, help="Optional output directory")
+    
+    args = parser.parse_args()
+    
+    input_dir = None
+    
+    if args.input:
+        input_dir = args.input
+    else:
+        # --- 修改：动态加载默认路径 ---
+        default_dir = load_default_path_from_settings()
+        
+        # 获取用户输入，如果用户直接按回车，则使用默认路径
+        try:
+            user_input = input(f"请输入包含 EPUB 文件的目录 (默认为: {default_dir}): ").strip()
+            input_dir = user_input if user_input else default_dir
+        except EOFError:
+             pass
+
     if not input_dir:
-        input_dir = default_dir
-        print(f"[*] 未输入路径，已使用默认目录: {input_dir}")
+         print(f"[!] 错误: 未提供输入目录。")
+         sys.exit(1)
+
+    print(f"[*] 未输入路径，已使用目录: {input_dir}")
 
     # 检查指定的目录是否存在
     if not os.path.isdir(input_dir):
@@ -92,7 +112,11 @@ def main():
         sys.exit(1)
 
     # 创建用于存放处理后文件的输出目录
-    output_dir = os.path.join(input_dir, OUTPUT_DIR_NAME)
+    if args.output:
+        output_dir = args.output
+    else:
+        output_dir = os.path.join(input_dir, OUTPUT_DIR_NAME)
+        
     os.makedirs(output_dir, exist_ok=True)
     
     print(f"[*] 转换后的 .txt 文件将保存在: {output_dir}")
@@ -132,7 +156,7 @@ def main():
     print(f"[✓] 任务完成！")
     print(f"    - 成功转换: {success_count} 个文件")
     print(f"    - 转换失败: {fail_count} 个文件")
-    print(f"    - 结果已保存至 '{OUTPUT_DIR_NAME}' 文件夹。")
+    print(f"    - 结果已保存至 '{output_dir}' 文件夹。")
 
 # 当该脚本被直接执行时，运行 main 函数
 if __name__ == '__main__':

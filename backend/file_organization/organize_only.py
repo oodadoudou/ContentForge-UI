@@ -186,36 +186,65 @@ def add_pinyin_prefix_to_dirs(root_directory: str):
 # Main
 # ==============================================================================
 if __name__ == "__main__":
+    import argparse
+    
     print("Organizer Script (No Translation)")
     print("-" * 50)
+    
+    parser = argparse.ArgumentParser(description="Organize Files")
+    parser.add_argument("--target_dir", help="Target directory to organize")
+    # Backup for piped input if needed, but we prefer args
+    args = parser.parse_args()
 
     default_path = load_settings_from_json()
-    
-    try:
-        # Support both interactive input and piped input (via echo)
-        if not sys.stdin.isatty():
-             # Piped input
-             target_directory_input = sys.stdin.read().strip()
-             print(f"Received path via pipe: {target_directory_input}")
-        else:
-             target_directory_input = input(f"Enter directory path (Default: {default_path}): ").strip()
-        
-        target_directory = target_directory_input if target_directory_input else default_path
-        
-        while not os.path.isdir(target_directory):
-            print(f"Error: '{target_directory}' is not a valid directory.")
-            if not sys.stdin.isatty():
-                 sys.exit(1) # Fail if piped
-            target_directory_input = input("Please re-enter path: ").strip()
-            if not target_directory_input:
-                sys.exit()
-            target_directory = target_directory_input
+    target_directory = ""
 
+    if args.target_dir:
+        if os.path.isdir(args.target_dir):
+            target_directory = args.target_dir
+            print(f"Using target directory from args: {target_directory}")
+        else:
+            print(f"Error: Provided target_dir '{args.target_dir}' is not valid.")
+            sys.exit(1)
+    else:
+        try:
+            # Support both interactive input and piped input (via echo) - fallback behavior
+            if not sys.stdin.isatty():
+                 # Piped input could be just the path
+                 # But since we use argparse now, this might be less relevant unless we keep it for backward compat
+                 # Let's try to read it if no args provided
+                 possible_input = sys.stdin.read().strip()
+                 if possible_input and os.path.isdir(possible_input):
+                      target_directory = possible_input
+                      print(f"Received path via pipe: {target_directory}")
+                 else:
+                      pass # Will fall to interactive
+            
+            if not target_directory:
+                target_directory_input = input(f"Enter directory path (Default: {default_path}): ").strip()
+                target_directory = target_directory_input if target_directory_input else default_path
+            
+            while not os.path.isdir(target_directory):
+                print(f"Error: '{target_directory}' is not a valid directory.")
+                if not sys.stdin.isatty():
+                     sys.exit(1) # Fail if piped
+                target_directory_input = input("Please re-enter path: ").strip()
+                if not target_directory_input:
+                    sys.exit()
+                target_directory = target_directory_input
+
+        except KeyboardInterrupt:
+            print("\nAborted.")
+            sys.exit()
+
+    try:
         # Execute
         organize_files_into_subdirs(target_directory)
         add_pinyin_prefix_to_dirs(target_directory)
-
         print("\nAll operations complete.")
+    except Exception as e:
+        print(f"Error during execution: {e}")
+        sys.exit(1)
 
     except KeyboardInterrupt:
         print("\nAborted.")

@@ -8,6 +8,8 @@ logger = logging.getLogger(__name__)
 class ScriptRunner:
     def __init__(self):
         self.process: Optional[asyncio.subprocess.Process] = None
+        self.last_activity_time: float = 0.0
+        self.timeout_seconds: int = 180  # 3 minutes
 
     async def run(self, command: List[str], work_dir: str, log_callback: Callable[[str], Awaitable[None]]):
         """
@@ -27,20 +29,31 @@ class ScriptRunner:
                 cwd=work_dir,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
+                stdin=asyncio.subprocess.PIPE,
                 # For Windows compat if needed in future: creationflags=subprocess.CREATE_NO_WINDOW
             )
+            self.last_activity_time = asyncio.get_event_loop().time()
         except Exception as e:
             await log_callback(f"[ERROR] Failed to start process: {str(e)}")
             logger.error(f"Failed to start process: {e}")
             return -1
 
+        # Start timeout monitor
+        monitor_task = asyncio.create_task(self._monitor_timeout(log_callback))
+
         # Concurrently read stdout and stderr
-        await asyncio.gather(
-            self._read_stream(self.process.stdout, "INFO", log_callback),
-            self._read_stream(self.process.stderr, "ERROR", log_callback)
-        )
+        try:
+            await asyncio.gather(
+                self._read_stream(self.process.stdout, "INFO", log_callback),
+                self._read_stream(self.process.stderr, "ERROR", log_callback)
+            )
+            exit_code = await self.process.wait()
+        except asyncio.CancelledError:
+            logger.info("Process execution cancelled")
+            exit_code = -1
+        finally:
+            monitor_task.cancel()
         
-        exit_code = await self.process.wait()
         await log_callback(f"[SYSTEM] Process finished with exit code {exit_code}")
         return exit_code
 
@@ -54,10 +67,37 @@ class ScriptRunner:
             if not line_bytes:
                 break
             
+            # Update activity time
+            self.last_activity_time = asyncio.get_event_loop().time()
+
             # Decode with replacement to avoid crashing on bad chars
             line = line_bytes.decode('utf-8', errors='replace').rstrip()
             if line:
                 await callback(f"[{level}] {line}")
+
+    async def _monitor_timeout(self, callback: Callable[[str], Awaitable[None]]):
+        """Monitors inactivity and kills process if timeout reached."""
+        while True:
+            await asyncio.sleep(5)
+            if self.process and self.process.returncode is None:
+                elapsed = asyncio.get_event_loop().time() - self.last_activity_time
+                if elapsed > self.timeout_seconds:
+                    await callback(f"[SYSTEM] Timeout: No activity for {self.timeout_seconds}s. Terminating.")
+                    await self.terminate()
+                    break
+
+    async def write_stdin(self, text: str):
+        """Writes text to the process stdin."""
+        if self.process and self.process.stdin:
+            try:
+                # Update activity time
+                self.last_activity_time = asyncio.get_event_loop().time()
+                
+                input_bytes = (text + "\n").encode('utf-8')
+                self.process.stdin.write(input_bytes)
+                await self.process.stdin.drain()
+            except Exception as e:
+                logger.error(f"Failed to write to stdin: {e}")
 
     async def terminate(self):
         if self.process and self.process.returncode is None:

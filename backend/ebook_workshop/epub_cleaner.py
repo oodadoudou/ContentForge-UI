@@ -454,28 +454,45 @@ def get_processing_mode():
         else:
             print("❌ 无效选项，请输入 f、c 或 b")
 
-def main():
-    """主函数"""
+    # 4. 开始处理
+    process_epub_directory(target_dir, mode)
+
+if __name__ == "__main__":
+    import argparse
+    parser = argparse.ArgumentParser(description="EPUB Cleaner Tool")
+    parser.add_argument("--input", help="Input directory")
+    parser.add_argument("--mode", help="Cleaning mode: f (fonts), c (cover), b (both)")
+    args = parser.parse_args()
+
     print("=" * 60)
     print("           EPUB 清理工具")
     print("=" * 60)
     print("功能: 删除 EPUB 文件中的封面、字体文件和 CSS 字体声明")
     
     # 1. 获取处理模式
-    mode = get_processing_mode()
+    if args.mode and args.mode in ['f', 'c', 'b']:
+        mode = args.mode
+    else:
+        mode = get_processing_mode()
     
     # 2. 获取目录路径
-    default_path = load_default_path_from_settings()
-    prompt_message = (
-        f"\n请输入包含 EPUB 文件的目录路径\n"
-        f"(直接按 Enter 使用默认路径: {default_path}): "
-    )
-    
-    user_input = input(prompt_message).strip().strip('"\'')
-    target_dir = user_input if user_input else default_path
-    
-    if not user_input:
-        print(f"使用默认目录: {target_dir}")
+    if args.input:
+        target_dir = args.input
+        if not os.path.exists(target_dir):
+             print(f"\n❌ 错误: 目录 '{target_dir}' 不存在或不是有效目录。")
+             sys.exit(1)
+    else:
+        default_path = load_default_path_from_settings()
+        prompt_message = (
+            f"\n请输入包含 EPUB 文件的目录路径\n"
+            f"(直接按 Enter 使用默认路径: {default_path}): "
+        )
+        
+        user_input = input(prompt_message).strip().strip('"\'')
+        target_dir = user_input if user_input else default_path
+        
+        if not user_input:
+            print(f"使用默认目录: {target_dir}")
     
     # 3. 验证目录
     if not os.path.isdir(target_dir):
@@ -484,6 +501,3 @@ def main():
     
     # 4. 开始处理
     process_epub_directory(target_dir, mode)
-
-if __name__ == "__main__":
-    main()

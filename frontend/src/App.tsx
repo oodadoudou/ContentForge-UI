@@ -1,14 +1,13 @@
 import React, { useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AppLayout } from './layouts/AppLayout';
-import { Dashboard } from './pages/Dashboard';
+import { Settings } from './pages/Settings';
 import { ConfigProvider, theme } from 'antd';
 import useWebSocket from 'react-use-websocket';
 import { WS_URL } from './api/config';
 import { useStore } from './store/useStore';
 
 import { Downloaders } from './pages/Downloaders';
-import { SettingsPage } from './pages/Settings';
 import { ComicProcessing } from './pages/ComicProcessing';
 import { EbookWorkshop } from './pages/EbookWorkshop';
 import { FileOrganization } from './pages/FileOrganization';
@@ -30,21 +29,27 @@ const App: React.FC = () => {
   }, [lastMessage, addLog]);
 
   return (
-    <ConfigProvider theme={{ algorithm: theme.darkAlgorithm }}>
+    <ConfigProvider
+      theme={{
+        algorithm: theme.defaultAlgorithm,
+        token: {
+          colorPrimary: '#13c2c2',
+        },
+      }}
+    >
       <BrowserRouter>
         <Routes>
           <Route path="/" element={<AppLayout />}>
-            <Route index element={<Dashboard />} />
+            <Route index element={<Settings />} />
             <Route path="comic" element={<ComicProcessing />} />
             <Route path="ebook" element={<EbookWorkshop />} />
             <Route path="org" element={<FileOrganization />} />
             <Route path="downloaders" element={<Downloaders />} />
-            <Route path="settings" element={<SettingsPage />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Route>
         </Routes>
       </BrowserRouter>
-    </ConfigProvider>
+    </ConfigProvider >
   );
 };
 

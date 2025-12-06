@@ -1,16 +1,18 @@
 import React, { useEffect, useState } from 'react';
-import { Form, Input, Switch, Button, Card, Select, message, Typography } from 'antd';
-import { SaveOutlined, FolderOpenOutlined } from '@ant-design/icons';
-import { apiClient } from '../api/client';
+import { Card, Typography, Button, Space, Input, Form, message } from 'antd';
+import { SaveOutlined, FolderOpenOutlined, SettingOutlined } from '@ant-design/icons';
+
 import { useStore } from '../store/useStore';
+import { apiClient } from '../api/client';
 
-const { Title } = Typography;
-const { Option } = Select;
+const { Title, Paragraph } = Typography;
 
-export const SettingsPage: React.FC = () => {
+export const Settings: React.FC = () => {
+
+    const setStoreSettings = useStore(state => state.setSettings);
+
     const [form] = Form.useForm();
     const [loading, setLoading] = useState(false);
-    const setStoreSettings = useStore(state => state.setSettings);
 
     useEffect(() => {
         loadSettings();
@@ -26,7 +28,7 @@ export const SettingsPage: React.FC = () => {
         }
     };
 
-    const handleSave = async (values: any) => {
+    const handleSaveSettings = async (values: any) => {
         setLoading(true);
         try {
             const res = await apiClient.post('/api/settings', values);
@@ -41,39 +43,36 @@ export const SettingsPage: React.FC = () => {
 
     return (
         <div style={{ padding: 24 }}>
-            <Title level={2}>Settings</Title>
-            <Card bordered={false}>
-                <Form layout="vertical" form={form} onFinish={handleSave}>
-                    <Card type="inner" title="General">
-                        <Form.Item label="Default Working Directory" name="default_work_dir">
+            <Title level={2}>设置 (Settings)</Title>
+            <Paragraph>
+                配置全局默认工作目录。实时会话目录可在右上角直接修改。
+            </Paragraph>
+
+            <Card title={<Space><SettingOutlined /> 全局配置 (Global Configuration)</Space>} bordered={false}>
+                <Form layout="vertical" form={form} onFinish={handleSaveSettings}>
+                    <Card type="inner" title="默认路径 (Default Paths)" size="small" style={{ marginBottom: 16 }}>
+                        <Form.Item label="默认工作目录 (Default Working Directory)" name="default_work_dir" help="此目录将作为每次启动时的默认目录">
                             <Input prefix={<FolderOpenOutlined />} placeholder="/path/to/default/workspace" />
                         </Form.Item>
-                        <Form.Item label="Auto-scroll Console" name="auto_scroll_console" valuePropName="checked">
-                            <Switch />
-                        </Form.Item>
-                        <Form.Item label="Language" name="language">
-                            <Select>
-                                <Option value="zh-CN">Chinese (Simplified)</Option>
-                                <Option value="en-US">English</Option>
-                            </Select>
-                        </Form.Item>
                     </Card>
 
-                    <Card type="inner" title="AI Configuration" style={{ marginTop: 16 }}>
-                        <Form.Item label="API Key" name="ai_api_key">
-                            <Input.Password placeholder="sk-..." />
-                        </Form.Item>
-                        <Form.Item label="Base URL" name="ai_base_url">
+                    <Card type="inner" title="AI 配置 (AI Configuration)" size="small" style={{ marginBottom: 16 }}>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+                            <Form.Item label="API 密钥 (API Key)" name="ai_api_key">
+                                <Input.Password placeholder="sk-..." />
+                            </Form.Item>
+                            <Form.Item label="模型名称 (Model Name)" name="ai_model_name">
+                                <Input placeholder="gpt-4" />
+                            </Form.Item>
+                        </div>
+                        <Form.Item label="基础 URL (Base URL)" name="ai_base_url" style={{ marginBottom: 0 }}>
                             <Input placeholder="https://api.openai.com/v1" />
                         </Form.Item>
-                        <Form.Item label="Model Name" name="ai_model_name">
-                            <Input placeholder="gpt-4" />
-                        </Form.Item>
                     </Card>
 
-                    <Form.Item style={{ marginTop: 24 }}>
+                    <Form.Item style={{ marginBottom: 0, textAlign: 'right' }}>
                         <Button type="primary" htmlType="submit" icon={<SaveOutlined />} loading={loading}>
-                            Save Settings
+                            保存配置
                         </Button>
                     </Form.Item>
                 </Form>

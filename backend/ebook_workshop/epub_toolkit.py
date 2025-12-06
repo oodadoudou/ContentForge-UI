@@ -6,19 +6,26 @@ import sys
 import zipfile
 import json
 
+from pathlib import Path
+
 def load_default_path_from_settings():
     """从共享设置文件中读取默认工作目录。"""
     try:
-        project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        settings_path = os.path.join(project_root, 'shared_assets', 'settings.json')
-        if os.path.exists(settings_path):
+        # 获取当前脚本所在目录的父目录的父目录 (即项目根目录)
+        project_root = Path(__file__).resolve().parent.parent
+        settings_path = project_root / 'shared_assets' / 'settings.json'
+        
+        if settings_path.exists():
             with open(settings_path, 'r', encoding='utf-8') as f:
                 settings = json.load(f)
+            # 如果 "default_work_dir" 存在且不为空，则返回它
             default_dir = settings.get("default_work_dir")
-            return default_dir if default_dir and os.path.isdir(default_dir) else "."
+            return default_dir if default_dir and os.path.exists(default_dir) else "."
         else:
              return os.path.join(os.path.expanduser("~"), "Downloads")
-    except Exception:
+             
+    except (FileNotFoundError, json.JSONDecodeError, KeyError) as e:
+        print(f"警告：读取 settings.json 失败 ({e})，将使用用户主目录下的 'Downloads' 作为备用路径。")
         return os.path.join(os.path.expanduser("~"), "Downloads")
 
 def create_epub(src_dir_path, out_file_path):
