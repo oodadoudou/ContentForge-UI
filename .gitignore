@@ -48,3 +48,4 @@ backend/downloaders/bomtoon/bomtoontw-session
 diritto_extracted_urls.json
 Single_chapter.html
 ContentForge.spec
+test_diritto_extraction.py
