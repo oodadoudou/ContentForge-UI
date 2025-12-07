@@ -586,9 +586,9 @@ if __name__ == "__main__":
                         print_book_report(book_stats, novel_title)
 
                     if novel_title and book_dir:
-                        # cleanup logic: 如果下载完全失败 (0 成功)，清理目录
-                        if book_stats and book_stats['successful'] == 0:
-                            log(f"⚠️《{novel_title}》下载完全失败 (0 成功)，正在清理目录...", level="WARN")
+                        # cleanup logic: 如果下载完全失败 (0 成功，0 跳过)，清理目录
+                        if book_stats and (book_stats['successful'] + book_stats['skipped'] == 0):
+                            log(f"⚠️《{novel_title}》下载完全失败 (0 成功，0 跳过)，正在清理目录...", level="WARN")
                             try:
                                 if os.path.exists(book_dir):
                                     shutil.rmtree(book_dir)
