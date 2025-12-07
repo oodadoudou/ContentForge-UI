@@ -11,7 +11,7 @@ class ScriptRunner:
     def __init__(self):
         self.process: Optional[asyncio.subprocess.Process] = None
         self.last_activity_time: float = 0.0
-        self.timeout_seconds: int = 180  # 3 minutes
+        self.timeout_seconds: int = 1800  # 30 minutes
 
     async def run(self, command: List[str], work_dir: str, log_callback: Callable[[str], Awaitable[None]]):
         """

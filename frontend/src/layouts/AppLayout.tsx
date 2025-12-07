@@ -72,25 +72,50 @@ export const AppLayout: React.FC = () => {
     ];
 
     // Typewriter Hook
-    const useTypewriter = (text: string, speed: number = 150) => {
+    const useTypewriter = (text: string, speed: number = 150, pauseDelay: number = 2000) => {
         const [displayText, setDisplayText] = useState('');
+        const [isDeleting, setIsDeleting] = useState(false);
 
         useEffect(() => {
-            let i = 0;
-            const timer = setInterval(() => {
-                if (i < text.length) {
-                    setDisplayText(prev => prev + text.charAt(i));
-                    i++;
-                } else {
-                    clearInterval(timer);
-                }
-            }, speed);
+            let timer: any;
 
-            return () => clearInterval(timer);
-        }, [text, speed]);
+            const handleTyping = () => {
+                const currentLength = displayText.length;
+
+                if (!isDeleting) {
+                    // Typing Mode
+                    if (currentLength < text.length) {
+                        setDisplayText(text.substring(0, currentLength + 1));
+                        timer = setTimeout(handleTyping, speed);
+                    } else {
+                        // Finished typing, wait before deleting
+                        timer = setTimeout(() => {
+                            setIsDeleting(true);
+                            timer = setTimeout(handleTyping, speed);
+                        }, pauseDelay);
+                    }
+                } else {
+                    // Deleting Mode
+                    if (currentLength > 0) {
+                        setDisplayText(text.substring(0, currentLength - 1));
+                        timer = setTimeout(handleTyping, speed / 2); // Delete faster
+                    } else {
+                        // Finished deleting, restart typing
+                        setIsDeleting(false);
+                        timer = setTimeout(handleTyping, speed);
+                    }
+                }
+            };
+
+            // Start loop
+            timer = setTimeout(handleTyping, speed);
+
+            return () => clearTimeout(timer);
+        }, [displayText, isDeleting, text, speed, pauseDelay]);
 
         return displayText;
     };
+
 
     const typeWriterText = useTypewriter('ContentForge 桌面版', 150);
 

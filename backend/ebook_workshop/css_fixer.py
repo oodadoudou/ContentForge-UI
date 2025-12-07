@@ -25,6 +25,22 @@ def get_unique_css_files(unzip_dir):
                     css_files[file_hash] = os.path.relpath(file_path, unzip_dir)
     return list(css_files.values())
 
+def read_content_auto(file_path) -> str:
+    """尝试多种编码读取内容"""
+    encodings = ['utf-8', 'utf-8-sig', 'cp949', 'euc-kr', 'gb18030', 'gbk', 'shift_jis', 'latin1']
+    try:
+        with open(file_path, 'rb') as f:
+            raw_data = f.read()
+    except Exception:
+        return ""
+
+    for enc in encodings:
+        try:
+            return raw_data.decode(enc)
+        except UnicodeDecodeError:
+            continue
+    return raw_data.decode('utf-8', errors='replace')
+
 def fix_epub_css(epub_path, output_dir):
     """修复单个EPUB文件中的CSS链接。"""
     temp_dir = os.path.join(output_dir, 'temp_epub_unpack')
@@ -46,8 +62,8 @@ def fix_epub_css(epub_path, output_dir):
             for file in files:
                 if file.endswith(('.html', '.xhtml')):
                     file_path = os.path.join(root, file)
-                    with open(file_path, 'r', encoding='utf-8') as f:
-                        soup = BeautifulSoup(f, 'html.parser')
+                    content = read_content_auto(file_path)
+                    soup = BeautifulSoup(content, 'html.parser')
 
                     # 检查是否没有样式表链接
                     if not (soup.head and soup.head.find_all('link', rel='stylesheet')):

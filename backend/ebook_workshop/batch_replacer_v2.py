@@ -14,6 +14,21 @@ import sys
 import json
 import css_fixer
 
+# --- 解决 Windows 控制台编码问题 (Fix Encoding Issues) ---
+# 强制将标准输出和错误输出设置为 UTF-8，以支持中文、韩文等字符
+# 防止在 GBK 环境下打印特殊字符时出现 UnicodeEncodeError
+if sys.platform.startswith('win'):
+    if sys.stdout is not None and hasattr(sys.stdout, 'reconfigure'):
+        try:
+            sys.stdout.reconfigure(encoding='utf-8')
+        except Exception:
+            pass
+    if sys.stderr is not None and hasattr(sys.stderr, 'reconfigure'):
+        try:
+            sys.stderr.reconfigure(encoding='utf-8')
+        except Exception:
+            pass
+
 # Add project root to sys.path
 project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, project_root)
@@ -28,6 +43,31 @@ warnings.filterwarnings("ignore", category=XMLParsedAsHTMLWarning)
 PROCESSED_DIR_NAME = "processed_files"
 REPORT_DIR_NAME = "compare_reference"
 HIGHLIGHT_STYLE = "background-color: #f1c40f; color: #000; padding: 2px; border-radius: 3px;"
+
+def read_content_auto(file_path_or_bytes) -> str:
+    """尝试多种编码读取内容 (UTF-8, UTF-8-SIG, CP949, GBK, etc)"""
+    encodings = ['utf-8', 'utf-8-sig', 'cp949', 'euc-kr', 'gb18030', 'gbk', 'shift_jis', 'latin1']
+    
+    if isinstance(file_path_or_bytes, (str, Path)):
+        try:
+            with open(file_path_or_bytes, 'rb') as f:
+                raw_data = f.read()
+        except Exception as e:
+            print(f"[!] 读取文件失败 {file_path_or_bytes}: {e}")
+            return ""
+    else:
+        raw_data = file_path_or_bytes
+
+    for enc in encodings:
+        try:
+            return raw_data.decode(enc)
+        except UnicodeDecodeError:
+            continue
+            
+    # Fallback
+    print(f"[!] 警告: 无法自动识别编码，将使用 utf-8 (errors='replace') 进行解码。")
+    return raw_data.decode('utf-8', errors='replace')
+
 
 def find_rules_file(directory: Path) -> Path:
     """在指定目录中查找规则文件。仅支持: rules.txt, rule.txt, 规则.txt (以及常见的 .txt.txt 错误命名)"""
@@ -56,9 +96,9 @@ def load_rules(rules_file: Path) -> pd.DataFrame:
     file_needs_update = False
 
     try:
-        # 1. Read all lines
-        with open(rules_file, 'r', encoding='utf-8') as f:
-            raw_lines = f.readlines()
+        # 1. Read all lines with auto encoding
+        content = read_content_auto(rules_file)
+        raw_lines = content.splitlines(keepends=True)
 
         # 2. Process lines
         for i, line in enumerate(raw_lines, 1):
@@ -72,8 +112,8 @@ def load_rules(rules_file: Path) -> pd.DataFrame:
             # Check for Moon Reader format: "Old#->#New"
             moon_reader_match = re.match(r'^(.*?)#->#(.*?)$', line)
             
-            # Check for Standard format: "Old -> New (Mode: Text/Regex)"
-            standard_match = re.match(r'^(.*?)\s*->\s*(.*?)\s*\(Mode:\s*(Text|Regex)\s*\)$', line, re.IGNORECASE)
+            # Check for Standard format: "Old -> New (Mode: Text/Regex)" or just "Old -> New"
+            standard_match = re.match(r'^(.*?)\s*->\s*(.*?)(?:\s*\(Mode:\s*(Text|Regex)\s*\))?$', line, re.IGNORECASE)
             
             # Check for Legacy format without replacement: "Old -> (Mode: Text)"
             legacy_no_repl_match = re.match(r'^(.*?)\s*->\s*\(Mode:\s*(Text|Regex)\s*\)$', line, re.IGNORECASE)
@@ -93,11 +133,21 @@ def load_rules(rules_file: Path) -> pd.DataFrame:
                     'Replacement': replacement,
                     'Mode': mode
                 })
-                # print(f"    [Conv] {original} -> {replacement}") # Optional logging
 
             elif standard_match:
-                original, replacement, mode = standard_match.groups()
-                lines_to_write.append(original_line) # Keep original if already standard
+                original, replacement, mode_group = standard_match.groups()
+                mode = mode_group if mode_group else "Text"
+                
+                # If mode was missing, we might want to standardize the file, but for now just load it.
+                # Use strict check to see if we should update file:
+                if not mode_group:
+                     # It matched leniently, let's update file to standard format
+                     file_needs_update = True
+                     new_line_str = f"{original.strip()} -> {replacement.strip()} (Mode: {mode.capitalize()})\n"
+                     lines_to_write.append(new_line_str)
+                else:
+                     lines_to_write.append(original_line)
+
                 rules_list.append({
                     'Original': original.strip(),
                     'Replacement': replacement.strip(),
@@ -161,10 +211,13 @@ def process_and_get_changes(content: str, rules: pd.DataFrame) -> tuple[str, lis
             if matches:
                 # 记录下每次匹配到的原文和它将被替换成的新文本
                 for match in matches:
-                    atomic_changes.append({
-                        "original_text": match.group(0),
-                        "replacement_text": match.expand(replacement)
-                    })
+                    original_text = match.group(0)
+                    replacement_text = match.expand(replacement)
+                    if original_text != replacement_text:
+                        atomic_changes.append({
+                            "original_text": original_text,
+                            "replacement_text": replacement_text
+                        })
                 # 应用本条规则的替换
                 modified_content = re.sub(search_pattern, replacement, modified_content)
         except re.error as e:
@@ -315,7 +368,7 @@ def process_txt_file(file_path: Path, rules: pd.DataFrame, processed_dir: Path, 
     """处理单个 .txt 文件。"""
     replacement_count = 0
     try:
-        content = file_path.read_text(encoding='utf-8')
+        content = read_content_auto(file_path)
         paragraphs = content.split('\n\n')
         processed_paragraphs = []
         changes_log_for_report = []
@@ -373,7 +426,7 @@ def process_epub_file(file_path: Path, rules: pd.DataFrame, processed_dir: Path,
         
         for item in book.get_items():
             if item.get_type() == ITEM_DOCUMENT:
-                content = item.get_content().decode('utf-8')
+                content = read_content_auto(item.get_content())
                 soup = BeautifulSoup(content, 'xml')
                 item_is_modified = False
                 
@@ -532,7 +585,7 @@ def main():
     processing_results = []
     modified_count = 0
     
-    with tqdm(total=len(files_to_process), desc="处理进度", unit="个文件") as pbar:
+    with tqdm(total=len(files_to_process), desc="处理进度", unit="个文件", file=sys.stdout) as pbar:
         for file_path in files_to_process:
             pbar.set_postfix_str(file_path.name, refresh=True)
             
