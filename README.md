@@ -44,6 +44,18 @@ ContentForge-UI is a powerful, local web-based toolbox designed for power users,
 
 ---
 
+---
+
+## 📥 下载 (Download)
+
+**Windows 用户 (Windows Users):**
+您可以直接从 Releases 页面下载最新版本的打包程序，解压即用，无需配置 Python 环境。
+You can download the latest packaged executable directly from the Releases page. Just unzip and run, no Python environment setup required.
+
+👉 [**Download Latest Release**](https://github.com/oodadoudou/ContentForge-UI/releases)
+
+---
+
 ## 🛠️ 安装与设置 (Installation & Setup)
 
 ### 前置要求 (Prerequisites)
