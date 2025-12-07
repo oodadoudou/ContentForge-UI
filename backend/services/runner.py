@@ -1,7 +1,9 @@
 import asyncio
 import logging
 from typing import Callable, Awaitable, List, Optional
+from typing import Callable, Awaitable, List, Optional
 import os
+import subprocess
 
 logger = logging.getLogger(__name__)
 
@@ -19,6 +21,47 @@ class ScriptRunner:
              await log_callback(f"[ERROR] Working directory does not exist: {work_dir}")
              return -1
 
+        # Adjust command for PyInstaller frozen environment
+        import sys
+        if getattr(sys, 'frozen', False):
+            if command and (command[0] == 'python' or command[0] == 'python3'):
+                exe_path = sys.executable
+                
+                # Identify script path from command
+                # Dev Command: ['python', '-u', 'D:/.../backend/script.py', 'args']
+                # We need to find the script part and remap it
+                script_path_index = -1
+                for i, arg in enumerate(command):
+                    if i > 0 and (arg.endswith('.py') or 'backend' in arg.replace('\\', '/')):
+                        script_path_index = i
+                        break
+                
+                if script_path_index != -1:
+                    original_path = command[script_path_index]
+                    # Logic: Find 'backend' in the path and get everything after it
+                    # Normalize slashes
+                    norm_path = original_path.replace('\\', '/')
+                    if 'backend/' in norm_path:
+                        rel_path = norm_path.split('backend/', 1)[1]
+                        # In frozen app (onedir or onefile), 'backend' is at root of sys._MEIPASS or dist dir
+                        # Actually in onedir, it's just ./backend/<script>
+                        # In onefile, it's sys._MEIPASS/backend/<script>
+                        bundle_dir = getattr(sys, '_MEIPASS', os.path.dirname(sys.executable))
+                        
+                        # We bundled 'backend' folder as-is into root
+                        new_script_path = os.path.join(bundle_dir, 'backend', rel_path)
+                        command[script_path_index] = new_script_path
+                        await log_callback(f"[SYSTEM] Remapped script path to: {new_script_path}")
+
+                # Transform: python script.py args -> ContentForge.exe run-script script.py args
+                new_command = [exe_path, 'run-script'] + command[1:]
+                # Remove '-u' if present as run-script handles it
+                if '-u' in new_command:
+                    new_command.remove('-u')
+                    
+                await log_callback(f"[SYSTEM] Frozen Env: Routing through {os.path.basename(exe_path)}")
+                command = new_command
+
         logger.info(f"Starting command: {command} in {work_dir}")
         await log_callback(f"[SYSTEM] Starting: {' '.join(command)}")
         await log_callback(f"[SYSTEM] CWD: {work_dir}")
@@ -30,7 +73,7 @@ class ScriptRunner:
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
                 stdin=asyncio.subprocess.PIPE,
-                # For Windows compat if needed in future: creationflags=subprocess.CREATE_NO_WINDOW
+                creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
             )
             self.last_activity_time = asyncio.get_event_loop().time()
         except Exception as e:

@@ -71,6 +71,29 @@ export const AppLayout: React.FC = () => {
         { key: '/downloaders', icon: <CloudDownloadOutlined />, label: '下载器 (Downloaders)' },
     ];
 
+    // Typewriter Hook
+    const useTypewriter = (text: string, speed: number = 150) => {
+        const [displayText, setDisplayText] = useState('');
+
+        useEffect(() => {
+            let i = 0;
+            const timer = setInterval(() => {
+                if (i < text.length) {
+                    setDisplayText(prev => prev + text.charAt(i));
+                    i++;
+                } else {
+                    clearInterval(timer);
+                }
+            }, speed);
+
+            return () => clearInterval(timer);
+        }, [text, speed]);
+
+        return displayText;
+    };
+
+    const typeWriterText = useTypewriter('ContentForge 桌面版', 150);
+
     return (
         <Layout style={{ minHeight: '100vh' }}>
             <Sider collapsible collapsed={collapsed} onCollapse={(value) => setCollapsed(value)} theme="light">
@@ -88,7 +111,13 @@ export const AppLayout: React.FC = () => {
             </Sider>
             <Layout>
                 <Header style={{ padding: '0 24px', background: colorBgContainer, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                    <h2 style={{ margin: 0 }}>ContentForge 桌面版</h2>
+                    <h2 style={{ margin: 0, minWidth: '200px' }}>
+                        {typeWriterText}
+                        <span className="cursor" style={{ animation: 'blink 1s step-end infinite' }}>|</span>
+                    </h2>
+                    <style>{`
+                        @keyframes blink { 50% { opacity: 0; } }
+                    `}</style>
                     <Space size="middle">
                         <Space style={{ marginRight: 24 }}>
                             <FolderOutlined />

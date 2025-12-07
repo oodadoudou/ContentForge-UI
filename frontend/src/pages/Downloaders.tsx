@@ -75,28 +75,44 @@ export const Downloaders: React.FC = () => {
                                 // Wait for script to complete and save file
                                 message.info('正在提取 URL...');
 
-                                // Poll for extracted URLs with cache-busting
-                                setTimeout(async () => {
+                                // Poll for extracted URLs with retry logic
+                                const maxRetries = 10;
+                                let attempts = 0;
+
+                                const checkUrls = async () => {
                                     try {
-                                        // Add timestamp to prevent caching
+                                        attempts++;
                                         const data = await taskApi.getExtractedUrls();
+
                                         if (data.urls && data.urls.length > 0) {
-                                            // Auto-populate the download form
                                             dirittoForm.setFieldsValue({ urls: data.urls.join('\n') });
-                                            message.success(`已自动填充 ${data.urls.length} 个小说 URL！`);
+                                            message.success(`成功提取 ${data.urls.length} 个 URL！`);
+                                            setExtracting(false);
                                         } else {
-                                            message.warning('未提取到 URL，请查看控制台输出。');
+                                            if (attempts < maxRetries) {
+                                                message.loading(`正在获取结果... (${attempts}/${maxRetries})`, 1);
+                                                setTimeout(checkUrls, 2000); // Retry every 2 seconds
+                                            } else {
+                                                message.warning('未提取到 URL，请检查控制台输出是否成功。');
+                                                setExtracting(false);
+                                            }
                                         }
                                     } catch (error) {
                                         console.error('Failed to fetch extracted URLs:', error);
-                                        message.error('获取提取的 URL 失败，请从控制台手动复制。');
-                                    } finally {
-                                        setExtracting(false);
+                                        if (attempts < maxRetries) {
+                                            setTimeout(checkUrls, 2000);
+                                        } else {
+                                            message.error('获取结果失败。');
+                                            setExtracting(false);
+                                        }
                                     }
-                                }, 6000); // Wait 6 seconds for extraction to complete
+                                };
+
+                                // Start polling after 2 seconds
+                                setTimeout(checkUrls, 2000);
                             } catch (error) {
                                 setExtracting(false);
-                                message.error('提取失败，请查看控制台输出。');
+                                message.error('启动提取任务失败');
                             }
                         }}>
                             <Form.Item label="数量" name="extractCount" initialValue={10}>
