@@ -129,13 +129,6 @@ export const EbookWorkshop: React.FC = () => {
                 删除 EPUB 中的冗余文件（如 iTunesMetadata.plist, ncx 等），减小体积。
             </Paragraph>
             <Paragraph>
-                <AntText strong>文件修复：</AntText>
-                <ul>
-                    <li><AntText strong>修复 TXT 编码：</AntText> 尝试自动修复乱码的 TXT 文件。</li>
-                    <li><AntText strong>重新格式化 TXT：</AntText> 规范化段落间距和缩进。</li>
-                </ul>
-            </Paragraph>
-            <Paragraph>
                 <AntText strong>合并与分割：</AntText>
                 支持将超大 EPUB 分割为多个小卷，或将多个 EPUB 合并。
             </Paragraph>
@@ -201,7 +194,6 @@ export const EbookWorkshop: React.FC = () => {
                         <Space size={[8, 8]} wrap>
                             <Button type="primary" onClick={() => runScript('epub_cleaner')}>EPUB 清理器</Button>
                             <Button type="primary" onClick={() => runScript('fix_txt_encoding')}>修复 TXT 编码</Button>
-                            <Button type="primary" onClick={() => runScript('reformat_txt')}>重新格式化 TXT</Button>
                             <Button type="primary" onClick={() => runScript('cover_repair')}>修复封面</Button>
                         </Space>
                     </Card>
