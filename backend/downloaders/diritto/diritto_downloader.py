@@ -52,27 +52,47 @@ def process_book(driver, start_url, download_path):
         # 2. 获取小说标题
         log("正在等待页面加载并获取小说标题...")
         
-        # 尝试多个可能的标题选择器
-        title_selectors = [
-            'p[class*="e1fhqjtj1"]',    # 原始选择器
-            'h1[class*="title"]',       # 备用选择器1
-            'h1',                       # 通用h1选择器
-            'h2[class*="title"]',       # 备用选择器2
-            '[class*="title"]',         # 任何包含title的class
-            '.title'                    # 通用title类
-        ]
-        
+        # 尝试使用 Meta 标签获取标题 (更稳定)
         novel_title = None
-        for selector in title_selectors:
-            try:
-                novel_title_element = wait.until(EC.visibility_of_element_located((By.CSS_SELECTOR, selector)))
-                novel_title = novel_title_element.text.strip().replace('/', '_').replace('\\', '_')
-                if novel_title:  # 确保标题不为空
-                    log(f"✅ 找到小说标题，使用选择器: {selector}")
-                    break
-            except (TimeoutException, Exception):
-                log(f"⚠️ 选择器 {selector} 未找到标题，尝试下一个...", level="DEBUG")
-                continue
+        
+        try:
+            # 策略1: og:title
+            og_title = driver.find_elements(By.CSS_SELECTOR, 'meta[property="og:title"]')
+            if og_title:
+                novel_title = og_title[0].get_attribute('content')
+                log(f"✅ 找到小说标题 (Meta: og:title): {novel_title}")
+            
+            # 策略2: twitter:title
+            if not novel_title:
+                tw_title = driver.find_elements(By.CSS_SELECTOR, 'meta[name="twitter:title"]')
+                if tw_title:
+                    novel_title = tw_title[0].get_attribute('content')
+                    log(f"✅ 找到小说标题 (Meta: twitter:title): {novel_title}")
+
+            # 策略3: document.title
+            if not novel_title:
+                doc_title = driver.title
+                if doc_title:
+                    # 通常格式为 "Title | Diritto" 或类似，需清理
+                    novel_title = doc_title.split('|')[0].strip()
+                    log(f"✅ 找到小说标题 (Document Title): {novel_title}")
+            
+            # 策略4: H1 标签 (作为最后的备选)
+            if not novel_title:
+                h1_elements = driver.find_elements(By.TAG_NAME, 'h1')
+                if h1_elements:
+                    novel_title = h1_elements[0].text.strip()
+                    log(f"✅ 找到小说标题 (H1): {novel_title}")
+
+        except Exception as e:
+            log(f"⚠️ 获取标题时发生错误: {e}", level="WARN")
+
+        # 清理文件名非法字符
+        if novel_title:
+            original_title = novel_title
+            novel_title = novel_title.replace('/', '_').replace('\\', '_').replace(':', '：').replace('?', '？').replace('*', '_').replace('"', '_').replace('<', '_').replace('>', '_').replace('|', '_')
+            if original_title != novel_title:
+                log(f"  (文件名已清理: {original_title} -> {novel_title})")
         
         if not novel_title:
             log("⚠️ 警告: 未能获取小说标题，使用默认名称", level="WARN")
@@ -82,31 +102,6 @@ def process_book(driver, start_url, download_path):
 
         # 3. 滚动到底部以加载所有章节
         log("正在获取章节列表 (滚动加载)...")
-        
-        # 使用多个可能的选择器来查找章节容器
-        chapter_container_selectors = [
-            'div[class*="eihlkz80"]',  # 原始选择器
-            'div[class*="ese98wi3"]',  # 备用选择器1
-            'div[class*="episode"]',   # 备用选择器2
-            'div[data-testid*="episode"]',  # 备用选择器3
-            'div[class*="chapter"]',   # 备用选择器4
-            'div[class*="list"]'       # 备用选择器5
-        ]
-        
-        chapter_container_found = False
-        for selector in chapter_container_selectors:
-            try:
-                # 使用短超时(2秒)快速检测，避免长时间等待
-                WebDriverWait(driver, 2).until(EC.visibility_of_element_located((By.CSS_SELECTOR, selector)))
-                log(f"✅ 找到章节容器，使用选择器: {selector}")
-                chapter_container_found = True
-                break
-            except TimeoutException:
-                log(f"⚠️ 选择器 {selector} 未找到元素 (超时跳过)...", level="DEBUG")
-                continue
-        
-        if not chapter_container_found:
-            log("❌ 警告: 未能找到章节容器，但继续尝试滚动加载...", level="WARN")
         
         # 滚动加载策略，增加尝试次数限制
         last_height = driver.execute_script("return document.body.scrollHeight")
@@ -235,7 +230,7 @@ def process_book(driver, start_url, download_path):
                 continue
 
             retries = 0
-            MAX_RETRIES = 3
+            MAX_RETRIES = 2
             download_successful = False
             
             while retries < MAX_RETRIES and not download_successful:
@@ -247,11 +242,9 @@ def process_book(driver, start_url, download_path):
                         
                     driver.get(url)
 
-                    # 尝试多个可能的章节标题选择器 (优先使用Diritto的ProseMirror结构)
+                    # 尝试多个可能的章节标题选择器 (避免 hardcode hash)
                     chapter_title_selectors = [
-                        'span.css-p50amq.e14fx9ai3',  # Diritto章节标题的确切选择器
-                        'span[class*="e14fx9ai3"]',   # 原始选择器
-                        '.e14fx9ai0 span',            # 标题容器内的span
+                        'span[class*="css-p50amq"]',  # Diritto 章节标题稳定前缀
                         'h1[class*="title"]',         # 备用选择器1
                         'h1',                         # 通用h1选择器
                         'h2',                         # 备用h2选择器
@@ -307,7 +300,7 @@ def process_book(driver, start_url, download_path):
                                      raise ValueError("内容无法查看 (可能需要登录或购买)")
                                 
                                 # 检查内容长度 (如果太短，极有可能是错误提示)
-                                if len(content.strip()) < 50:
+                                if len(content.strip()) < 100:
                                     log(f"⚠️ 提取内容过短 ({len(content.strip())} 字符)，可能为错误提示: {content.strip()[:20]}...", level="WARN")
                                     
                                 log(f"✅ 找到章节内容，使用选择器: {selector}")
@@ -364,9 +357,9 @@ def process_book(driver, start_url, download_path):
                 consecutive_failures = 0
             else:
                 consecutive_failures += 1
-                if consecutive_failures >= 3:
+                if consecutive_failures >= 2:
                     log("!"*60, level="ERROR")
-                    log("❌ 错误: 连续 3 章提取内容失败，停止下载当前书籍。", level="ERROR")
+                    log("❌ 错误: 连续 2 章提取内容失败，停止下载当前书籍。", level="ERROR")
                     log("⚠️ 提示: 如果迟迟无法下载，请在现在打开的浏览器里登入已经成人认证过的账号，然后再次使用", level="WARN")
                     log("⚠️ 提示: 如果依然无法下载可能是diritto官方限时免费已经结束", level="WARN")
                     log("!"*60, level="ERROR")
@@ -498,7 +491,7 @@ def print_total_report(all_book_stats):
     log("#"*50)
 
 if __name__ == "__main__":
-    MAX_CONSECUTIVE_FAILURES = 3
+    MAX_CONSECUTIVE_FAILURES = 2
     
     # --- 1. 参数解析 ---
     # 简单解析命令行参数，支持 output 和 urls

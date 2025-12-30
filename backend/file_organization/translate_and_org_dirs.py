@@ -70,10 +70,14 @@ def load_settings_from_json():
             settings = json.load(f)
         
         # 加载 AI 配置
-        ai_config = settings.get("ai_config", {})
-        API_URL = ai_config.get("base_url", "https://ark.cn-beijing.volces.com/api/v3/chat/completions")
-        API_BEARER_TOKEN = ai_config.get("api_key", "")
-        API_MODEL = ai_config.get("model_name", "doubao-pro-32k")
+        # ai_config = settings.get("ai_config", {})
+        # Flattened structure support based on actual settings.json
+        API_URL = settings.get("ai_base_url", "https://ark.cn-beijing.volces.com/api/v3/chat/completions").strip()
+        API_BEARER_TOKEN = settings.get("ai_api_key", "").strip()
+        API_MODEL = settings.get("ai_model_name", "deepseek-v3-2-251201").strip()
+
+        if API_URL and not API_URL.endswith("/chat/completions"):
+            print(f"⚠️  警告: 检测到 API URL '{API_URL}' 可能缺少 '/chat/completions' 后缀，请检查配置。")
         
         # 返回默认工作目录
         default_dir = settings.get("default_work_dir")

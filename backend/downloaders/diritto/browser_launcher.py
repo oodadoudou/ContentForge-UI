@@ -191,10 +191,33 @@ def setup_driver_with_auto_launch(port=9222, user_data_dir=None):
         print("✅ 成功连接到浏览器！")
         return driver
     except Exception as e:
-        print(f"❌ 连接浏览器失败: {e}")
-        print("\\n请确认：")
-        print(f"1. Chrome 浏览器是否已在端口 {port} 上运行？")
-        print("2. 是否有其他程序占用了该端口？")
+        print(f"⚠️ 连接现有浏览器失败: {e}")
+        print("尝试清理占用端口的进程并重启浏览器...")
+        
+        # 尝试杀掉占用端口的进程
+        try:
+            if sys.platform != 'win32':
+                os.system(f"lsof -t -i:{port} | xargs kill -9")
+            else:
+                 # Windows kill command
+                 os.system(f"netstat -ano | findstr :{port} > pid.txt")
+                 # 简单的 Windows 处理逻辑可能比较复杂，这里暂略，主要针对 Mac 用户优化
+                 pass
+            time.sleep(2)
+        except Exception:
+            pass
+
+        # 重试启动
+        print("[信息] 正在重新启动 Chrome 浏览器...")
+        process = launch_chrome(port=port, user_data_dir=user_data_dir)
+        if process:
+             try:
+                 driver = webdriver.Chrome(options=options)
+                 print("✅ 重启后成功连接到浏览器！")
+                 return driver
+             except Exception as e2:
+                 print(f"❌ 重启后连接失败: {e2}")
+        
         return None
 
 

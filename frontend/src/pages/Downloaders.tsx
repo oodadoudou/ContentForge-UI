@@ -116,7 +116,7 @@ export const Downloaders: React.FC = () => {
                             }
                         }}>
                             <Form.Item label="数量" name="extractCount" initialValue={10}>
-                                <Input type="number" min={1} max={50} style={{ width: 100 }} />
+                                <Input type="number" min={1} max={100} style={{ width: 100 }} />
                             </Form.Item>
                             <Form.Item>
                                 <Button type="primary" htmlType="submit" loading={extracting}>
