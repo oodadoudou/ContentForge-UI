@@ -70,11 +70,22 @@ def load_settings_from_json():
             settings = json.load(f)
         
         # 加载 AI 配置
-        # ai_config = settings.get("ai_config", {})
         # Flattened structure support based on actual settings.json
-        API_URL = settings.get("ai_base_url", "https://ark.cn-beijing.volces.com/api/v3/chat/completions").strip()
-        API_BEARER_TOKEN = settings.get("ai_api_key", "").strip()
-        API_MODEL = settings.get("ai_model_name", "deepseek-v3-2-251201").strip()
+        # 使用 (value or default) 确保即使 json 中值为 null 也不会导致 None.strip() 崩溃
+        api_url_val = settings.get("ai_base_url")
+        API_URL = (api_url_val if api_url_val is not None else "https://ark.cn-beijing.volces.com/api/v3/chat/completions").strip()
+        
+        api_key_val = settings.get("ai_api_key")
+        API_BEARER_TOKEN = (api_key_val if api_key_val is not None else "").strip()
+        
+        api_model_val = settings.get("ai_model_name")
+        API_MODEL = (api_model_val if api_model_val is not None else "deepseek-v3-2-251201").strip()
+
+        if not API_BEARER_TOKEN:
+             print("\n" + "!" * 60)
+             print("警告:未检测到 API Key 配置 (ai_api_key 为空)！")
+             print("请在 settings.json 中配置正确的 AI API Key，否则翻译功能将跳过。")
+             print("!" * 60 + "\n")
 
         if API_URL and not API_URL.endswith("/chat/completions"):
             print(f"⚠️  警告: 检测到 API URL '{API_URL}' 可能缺少 '/chat/completions' 后缀，请检查配置。")
@@ -85,6 +96,17 @@ def load_settings_from_json():
 
     except (FileNotFoundError, json.JSONDecodeError, KeyError) as e:
         print(f"警告：读取 settings.json 失败 ({e})，将使用内置的备用值。")
+        API_URL = "https://ark.cn-beijing.volces.com/api/v3/chat/completions"
+        API_BEARER_TOKEN = ""
+        API_MODEL = "deepseek-v3-2-251201"
+        return os.path.join(os.path.expanduser("~"), "Downloads")
+    except Exception as e:
+        print(f"严重错误：加载配置文件时发生未预料的异常: {e}")
+        print("请检查 shared_assets/settings.json 文件内容是否合法 (例如不允许为 null 的字段)。")
+        # 防止后续引用未定义变量导致崩溃
+        API_URL = "https://ark.cn-beijing.volces.com/api/v3/chat/completions"
+        API_BEARER_TOKEN = ""
+        API_MODEL = "deepseek-v3-2-251201"
         return os.path.join(os.path.expanduser("~"), "Downloads")
 
 # ==============================================================================

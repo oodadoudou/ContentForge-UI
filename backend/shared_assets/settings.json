@@ -1,8 +1,8 @@
 {
-  "default_work_dir": "/Users/doudouda/Downloads/Personal_doc/Study/Proj/",
-  "ai_api_key": null,
-  "ai_base_url": null,
-  "ai_model_name": null,
+  "default_work_dir": "/Users/doudouda/Downloads/2/",
+  "ai_api_key": "6030e5b0-ae29-4d36-9adc-993135452ddc",
+  "ai_base_url": "https://ark.cn-beijing.volces.com/api/v3/chat/completions ",
+  "ai_model_name": "deepseek-v3-2-251201",
   "recent_tasks": [],
   "favorite_paths": [],
   "language": "zh-CN",
