@@ -26,13 +26,27 @@ def main():
     print_step("Starting ContentForge Build Process")
 
     # 1. Clean previous builds
+    # 1. Clean previous builds
     print_step("Cleaning previous builds...")
+    # Helper to remove readonly
+    def remove_readonly(func, path, excinfo):
+        os.chmod(path, 0o777)
+        func(path)
+
     if dist_dir.exists():
-        shutil.rmtree(dist_dir)
-        print(f"Removed {dist_dir}")
+        print(f"Removing {dist_dir}...")
+        try:
+            shutil.rmtree(dist_dir, onerror=remove_readonly)
+        except Exception as e:
+            print(f"Warning: Could not fully remove dist dir: {e}")
+            print("Make sure no other processes (like a running server) are using it.")
+            
     if build_dir.exists():
-        shutil.rmtree(build_dir)
-        print(f"Removed {build_dir}")
+        try:
+            shutil.rmtree(build_dir, onerror=remove_readonly)
+            print(f"Removed {build_dir}")
+        except Exception as e:
+            print(f"Warning: Could not remove build dir: {e}")
 
     # 2. Build Frontend
     print_step("Building Frontend...")
