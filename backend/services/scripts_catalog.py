@@ -134,63 +134,8 @@ SCRIPTS: Dict[str, ScriptDef] = {
         required_args=["input_dir"]
     ),
 
-    # --- Downloaders ---
-    "bomtoon_login": ScriptDef(
-        id="bomtoon_login",
-        name="Bomtoon Login (Mac)",
-        path="backend/downloaders/bomtoon/update_token.py",
-        command_template="python {script_path}",
-        platforms=["darwin", "windows"]
-    ),
-     "bomtoon_list": ScriptDef(
-        id="bomtoon_list",
-        name="Bomtoon List Comics",
-        path="backend/downloaders/bomtoon/bomtoontwext.py",
-        command_template="python {script_path} list-comic",
-        required_args=[]
-    ),
-    "bomtoon_search": ScriptDef(
-        id="bomtoon_search",
-        name="Bomtoon Search",
-        path="backend/downloaders/bomtoon/bomtoontwext.py",
-        command_template="python {script_path} search {query}",
-        required_args=["query"]
-    ),
-    "bomtoon_dl": ScriptDef(
-        id="bomtoon_dl",
-        name="Bomtoon Download",
-        path="backend/downloaders/bomtoon/bomtoontwext.py",
-        command_template="python {script_path} dl -o {output_dir} {comic_id} {chapter_ids}",
-        required_args=["output_dir", "comic_id", "chapter_ids"]
-    ),
-    "bomtoon_dl_all": ScriptDef(
-        id="bomtoon_dl_all",
-        name="Bomtoon Download All",
-        path="backend/downloaders/bomtoon/bomtoontwext.py",
-        command_template="python {script_path} dl-all -o {output_dir} {comic_id}",
-        required_args=["output_dir", "comic_id"]
-    ),
-    "bomtoon_dl_seq": ScriptDef(
-        id="bomtoon_dl_seq",
-        name="Bomtoon Download Sequence",
-        path="backend/downloaders/bomtoon/bomtoontwext.py",
-        command_template="python {script_path} dl-seq -o {output_dir} {comic_id} {chapter_range}",
-        required_args=["output_dir", "comic_id", "chapter_range"]
-    ),
-    "diritto_extract_urls": ScriptDef(
-        id="diritto_extract_urls",
-        name="Diritto URL Extractor",
-        path="backend/downloaders/diritto/diritto_url_extractor.py",
-        command_template="python {script_path} --count {count}",
-        required_args=[]
-    ),
-    "diritto_download_novels": ScriptDef(
-        id="diritto_download_novels",
-        name="Diritto Novel Downloader",
-        path="backend/downloaders/diritto/diritto_downloader.py",
-        command_template="python {script_path} --urls {urls}",
-        required_args=["urls"]
-    ),
+    # --- Downloaders (Removed) ---
+
 
     # --- File Organization ---
     "translate_org": ScriptDef(

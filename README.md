@@ -32,8 +32,7 @@ ContentForge-UI is a powerful, local web-based toolbox designed for power users,
 - **图片转 PDF (Image to PDF)**: 将图片文件夹转换为优化后的 PDF 文件。
 - **图片处理流 (Image Pipeline)**: 用于图片放大或清理的高级批处理流程 (v5 管道)。
 
-### ⬇️ 下载器 (Downloaders)
-- **Diritto 下载器 (Diritto Downloader)**: 针对 *diritto.co.kr* 的专用下载器。
+
   - **自动浏览器集成 (Auto-Browser Integration)**: 自动启动并连接 Chrome 实例以处理会话。
   - **URL 提取器 (URL Extractor)**: 抓取排行榜页面以批量提取小说 URL。
   - **强大的提取能力 (Robust Extraction)**: 处理复杂的 DOM 结构和 "ProseMirror" 内容。
@@ -61,7 +60,7 @@ You can download the latest packaged executable directly from the Releases page.
 ### 前置要求 (Prerequisites)
 - **Python 3.10+**
 - **Node.js 16+** & **npm**
-- **Google Chrome** (用于 Diritto 下载器 / for Diritto downloader)
+
 
 ### 后端设置 (Backend Setup)
 1. 进入 `backend` 目录:
@@ -127,7 +126,7 @@ You can configure the **Default Work Directory** via the "Settings" tab in the U
 ### 浏览器自动化 (Browser Automation)
 对于需要浏览器自动化的工具（如 Diritto 下载器），系统会尝试自动启动带有远程调试端口 `9222` 的 Chrome。请确保您的 Chrome 安装是标准的，否则脚本将尝试检测 `chrome.exe` 或 `msedge.exe`。
 
-For tools requiring browser automation (like Diritto Downloader), the system attempts to auto-launch Chrome with remote debugging on port `9222`.
+
 
 ---
 

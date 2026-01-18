@@ -7,7 +7,7 @@ import useWebSocket from 'react-use-websocket';
 import { WS_URL } from './api/config';
 import { useStore } from './store/useStore';
 
-import { Downloaders } from './pages/Downloaders';
+
 import { ComicProcessing } from './pages/ComicProcessing';
 import { EbookWorkshop } from './pages/EbookWorkshop';
 import { FileOrganization } from './pages/FileOrganization';
@@ -44,7 +44,7 @@ const App: React.FC = () => {
             <Route path="comic" element={<ComicProcessing />} />
             <Route path="ebook" element={<EbookWorkshop />} />
             <Route path="org" element={<FileOrganization />} />
-            <Route path="downloaders" element={<Downloaders />} />
+
             <Route path="*" element={<Navigate to="/" replace />} />
           </Route>
         </Routes>

@@ -1,9 +1,14 @@
 import os
 import sys
 import logging
+import asyncio
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+
+# Fix for Windows asyncio subprocess loop (Must be before loop creation)
+if os.name == 'nt':
+    asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
 
 # Import services
 from backend.services.websocket_manager import manager

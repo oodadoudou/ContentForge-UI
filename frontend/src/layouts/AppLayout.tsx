@@ -6,7 +6,7 @@ import {
     FileImageOutlined,
     ReadOutlined,
     FolderOpenOutlined,
-    CloudDownloadOutlined,
+
     QuestionCircleOutlined,
     FolderOutlined,
     SettingOutlined,
@@ -68,7 +68,7 @@ export const AppLayout: React.FC = () => {
         { key: '/ebook', icon: <ReadOutlined />, label: '电子书工坊 (Ebook Workshop)' },
         { key: '/comic', icon: <FileImageOutlined />, label: '漫画处理 (Comic Processing)' },
         { key: '/org', icon: <FolderOpenOutlined />, label: '文件整理 (File Organization)' },
-        { key: '/downloaders', icon: <CloudDownloadOutlined />, label: '下载器 (Downloaders)' },
+
     ];
 
     // Typewriter Hook

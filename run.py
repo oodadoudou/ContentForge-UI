@@ -70,7 +70,8 @@ def start_server_frozen():
         # Configure logging to file in frozen mode to capture errors
         logging.basicConfig(filename='backend_startup.log', level=logging.INFO)
         print("Starting Uvicorn in frozen mode...")
-        uvicorn.run(app, host=HOST, port=PORT, log_level="info")
+        # Force asyncio loop for Windows subprocess support
+        uvicorn.run(app, host=HOST, port=PORT, log_level="info", loop="asyncio")
     except Exception as e:
         error_msg = f"Failed to start backend: {e}"
         print(error_msg)
@@ -84,6 +85,7 @@ def start_server_dev():
     print("Starting Uvicorn in dev mode (subprocess)...")
     import subprocess
     
+    # Reverting to standard command; the thread-based runner handles the subprocess safely now.
     cmd = [sys.executable, "-m", "uvicorn", "backend.app:app", "--host", HOST, "--port", str(PORT), "--reload"]
     
     # Hide console window on Windows
@@ -129,12 +131,22 @@ def wait_for_backend_and_launch():
     print("Timed out waiting for backend.")
     return False
 
+
+try:
+    from backend.utils.cleanup import cleanup_resources, free_port
+except ImportError:
+    # Fallback if dependencies not yet fully loaded/installed in some weird edge case
+    def cleanup_resources(port=8000):
+        print("Cleanup utility not found, skipping deep cleanup.")
+    def free_port(port):
+        return False
+
 def on_closed():
     print("Application closed. Cleaning up...")
-    if backend_process:
-        backend_process.terminate()
+    cleanup_resources(PORT)
     # If using webview, this might handle itself, but force exit is safer
     os._exit(0)
+
 
 if __name__ == "__main__":
     # Check arguments for custom modes
@@ -149,10 +161,15 @@ if __name__ == "__main__":
 
     # Normal Application Startup
     
-    # Check if port is already in use
+    # Check if port is already in use and try to free it
     if is_port_in_use(PORT):
-        print(f"Backend already running on port {PORT}")
-        sys.exit(0)
+        print(f"Port {PORT} is in use. Attempting to free it...")
+        if free_port(PORT):
+            print(f"Successfully freed port {PORT}.")
+            time.sleep(1) # Give OS a moment to release
+        else:
+            print(f"Warning: Could not free port {PORT}. Backend might fail to start if it's not our own process.")
+
 
     # Determine execution mode
     check_frozen = getattr(sys, 'frozen', False)
