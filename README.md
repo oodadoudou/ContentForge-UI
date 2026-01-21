@@ -32,20 +32,14 @@ ContentForge-UI is a powerful, local web-based toolbox designed for power users,
 - **图片转 PDF (Image to PDF)**: 将图片文件夹转换为优化后的 PDF 文件。
 - **图片处理流 (Image Pipeline)**: 用于图片放大或清理的高级批处理流程 (v5 管道)。
 
-
-  - **自动浏览器集成 (Auto-Browser Integration)**: 自动启动并连接 Chrome 实例以处理会话。
-  - **URL 提取器 (URL Extractor)**: 抓取排行榜页面以批量提取小说 URL。
-  - **强大的提取能力 (Robust Extraction)**: 处理复杂的 DOM 结构和 "ProseMirror" 内容。
-  - **目录清理 (Auto-Cleanup)**: 自动检测下载失败（0 成功章节）并删除空文件夹。
-
 ### 🗂️ 文件整理 (File Organization)
 - **文件夹编解码 (Folder Codec)**: 将文件夹安全打包为加密的压缩包 (7z/zip) 并轻松解包。
+- **纯整理 (Organize Only)**: 基于文件名规则将文件分类到文件夹中。
+- **翻译并整理 (Translate & Organize)**: 翻译目录名称并进行整理。
 
 ---
 
----
-
-## 📥 下载 (Download)
+## � 下载 (Download)
 
 **Windows 用户 (Windows Users):**
 您可以直接从 Releases 页面下载最新版本的打包程序，解压即用，无需配置 Python 环境。
@@ -55,11 +49,11 @@ You can download the latest packaged executable directly from the Releases page.
 
 ---
 
-## 🛠️ 安装与设置 (Installation & Setup)
+## �🛠️ 安装与设置 (Installation & Setup)
 
 ### 前置要求 (Prerequisites)
-- **Python 3.10+**
-- **Node.js 16+** & **npm**
+- **Python 3.11+**
+- **Node.js 22+** & **npm**
 
 
 ### 后端设置 (Backend Setup)
@@ -99,6 +93,17 @@ The easiest way to run ContentForge is using the provided `run.py` script in the
 python run.py
 ```
 - 访问 UI 地址: `http://127.0.0.1:8000`
+
+### 🐳 Docker 启动 (Docker Start)
+如果您安装了 Docker，可以使用 Docker Compose 快速启动开发环境：
+If you have Docker installed, you can quickly spin up the development environment using Docker Compose:
+
+```bash
+docker compose up --build
+```
+- **前端 (Frontend)**: `http://localhost:4073`
+- **后端 (Backend)**: `http://localhost:8000/docs` (API Docs)
+
 
 ### 手动启动 (Manual Start)
 **后端 (Backend):**
